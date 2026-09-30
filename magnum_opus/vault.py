@@ -8,7 +8,7 @@ Layout:
     PRIORITIES.md                   complete ordered list
     projects/<slug>/STATUS.md       rolling per-project state
     projects/<slug>/chats/*.md      distilled notes (one per segment)
-    inbox/*.md                      unclassified notes
+    unsorted/*.md                   notes not yet placed by `magnum sort`
 
 Incremental state is tracked at **message** level, not conversation level.
 These threads are living documents; keying on a conversation timestamp would
@@ -132,6 +132,12 @@ class Vault:
         stem = f"{note.conversation_id}--{note.start_id[:8]}"
         path = note_dir / f"{stem}.md"
         path.write_text(self._render(note, project), encoding="utf-8")
+        # A note that moved (re-sorted into another project) must not leave its
+        # old file behind: two copies of one note would both be read back by
+        # reindex, and the stale one could win.
+        prev = self.state["segments"].get(note.segment_key, {}).get("path")
+        if prev and (self.root / prev) != path and (self.root / prev).exists():
+            (self.root / prev).unlink()
 
         self.state["segments"][note.segment_key] = {
             "path": str(path.relative_to(self.root)), "project": project,
@@ -170,17 +176,22 @@ class Vault:
 
         links = " ".join(f"[[{slugify(l)}]]" for l in note.links)
         head = note.label or note.title
+        # Free text goes through json.dumps: a JSON string is always a valid
+        # YAML double-quoted scalar, so quotes, backslashes and newlines in a
+        # chat title can never break the frontmatter for Obsidian or any
+        # other YAML reader.
+        q = json.dumps
         return (
             "---\n"
-            f'title: "{note.title}"\n'
-            f'segment: "{note.label}"\n'
+            f"title: {q(note.title)}\n"
+            f"segment: {q(note.label or '')}\n"
             f"conversation_id: {note.conversation_id}\n"
             f"start_message: {note.start_id}\n"
             f"end_message: {note.end_id}\n"
             f"provider: {note.provider}\n"
             f"updated: {note.updated_at}\n"
             f"project: {project}\n"
-            f'topic: "{getattr(note, "topic", "")}"\n'
+            f"topic: {q(getattr(note, 'topic', '') or '')}\n"
             f"author: {note.author}\n"
             'spec: "0.2"\n'
             "---\n\n"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "magnum-opus"
-version = "0.1.0"
+version = "0.3.5"
 description = "Distill AI chat exports into a completion-focused, convergence-aware Obsidian vault"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,6 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 llm = ["anthropic>=0.40"]
 converge = ["sentence-transformers>=3.0", "scikit-learn>=1.4"]
+dev = ["pytest>=8", "pyyaml>=6"]
 
 [project.scripts]
 magnum = "magnum_opus.cli:main"

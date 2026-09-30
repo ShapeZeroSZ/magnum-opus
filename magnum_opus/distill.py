@@ -16,9 +16,10 @@ can never be conflated downstream.
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass, field, asdict
+
+from .llm import response_text
 
 CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 MAX_SEGMENT_CHARS = 400_000   # ~100k tokens, safely under a 200k context window
@@ -207,27 +208,25 @@ class HeuristicDistiller:
         )
 
 
-class AnthropicDistiller:
-    """LLM distiller. Default model is the cheap extraction tier."""
+DEFAULT_MODEL = "claude-haiku-4-5-20251001"   # cheap extraction tier (anthropic)
 
-    name = "anthropic"
 
-    def __init__(self, known_projects=None,
-                 model: str = "claude-haiku-4-5-20251001",
-                 max_tokens: int = 3000, strip_code: bool = True):
-        try:
-            import anthropic
-        except ImportError as e:
-            raise RuntimeError("pip install anthropic") from e
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise RuntimeError("ANTHROPIC_API_KEY is not set.")
-        # Identity-linked API keys must declare the workspace they act in.
-        # Set ANTHROPIC_WORKSPACE_ID (starts with "wrkspc_") when using one.
-        headers = {}
-        workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
-        if workspace:
-            headers["anthropic-workspace-id"] = workspace
-        self.client = anthropic.Anthropic(default_headers=headers or None)
+class LLMDistiller:
+    """LLM distiller over any provider client (see llm.py)."""
+
+    name = "llm"
+
+    def __init__(self, client=None, known_projects=None, model: str | None = None,
+                 max_tokens: int = 3000, strip_code: bool = True,
+                 provider: str = "anthropic"):
+        if client is None:
+            from .llm import make_client
+            client = make_client(provider)
+        if not model:
+            if provider != "anthropic":
+                raise RuntimeError(f"--model is required with the {provider} provider.")
+            model = DEFAULT_MODEL
+        self.client = client
         self.model = model
         self.max_tokens = max_tokens
         self.strip_code = strip_code
@@ -242,11 +241,13 @@ class AnthropicDistiller:
             model=self.model, max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
-        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        text = response_text(resp)
         text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
+            data = {"summary": text[:500]}
+        if not isinstance(data, dict):
             data = {"summary": text[:500]}
 
         return Note(
@@ -263,12 +264,29 @@ class AnthropicDistiller:
         )
 
 
-def get_distiller(backend: str, known_projects, model=None, strip_code=True):
+class AnthropicDistiller(LLMDistiller):
+    """Backward-compatible name: LLMDistiller on the anthropic provider."""
+
+    name = "anthropic"
+
+    def __init__(self, known_projects=None, model: str = DEFAULT_MODEL,
+                 max_tokens: int = 3000, strip_code: bool = True, client=None):
+        super().__init__(client=client, known_projects=known_projects, model=model,
+                         max_tokens=max_tokens, strip_code=strip_code,
+                         provider="anthropic")
+
+
+def get_distiller(backend: str, known_projects, model=None, strip_code=True,
+                  client=None, provider: str = "anthropic"):
+    """backend: "heuristic" (offline) or "llm" ("anthropic" is accepted as an
+    alias for llm on the anthropic provider, as in earlier versions)."""
     if backend == "heuristic":
         return HeuristicDistiller(known_projects)
     if backend == "anthropic":
-        kw = {"known_projects": known_projects, "strip_code": strip_code}
-        if model:
-            kw["model"] = model
-        return AnthropicDistiller(**kw)
+        return AnthropicDistiller(known_projects=known_projects,
+                                  model=model or DEFAULT_MODEL,
+                                  strip_code=strip_code, client=client)
+    if backend == "llm":
+        return LLMDistiller(client=client, known_projects=known_projects,
+                            model=model, strip_code=strip_code, provider=provider)
     raise ValueError(f"Unknown distiller backend: {backend}")

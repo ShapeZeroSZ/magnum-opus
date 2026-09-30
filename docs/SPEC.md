@@ -16,12 +16,16 @@ source (an AI conversation, a document, a session).
 ```markdown
 ---
 title: "Grey v9 expert routing bug"
-source_id: aaa-111            # stable ID of the source (e.g. conversation ID)
-provider: claude               # claude | chatgpt | obsidian | manual | <other>
-updated: 2026-07-01T11:00:00Z  # ISO 8601, from the source
-project: grey                  # slug; "inbox" = unclassified
-author: distiller              # human | distiller | agent:<name>
-spec: "0.1"
+segment: "load balancing fix"          # the segment's label, may be ""
+conversation_id: aaa-111               # stable ID of the source
+start_message: 0b6f487d-...            # first message of the segment (full id)
+end_message: 22a0060b-...              # last message of the segment (full id)
+provider: claude                       # claude | chatgpt | obsidian | manual | <other>
+updated: 2026-07-01T11:00:00Z          # ISO 8601, from the source
+project: grey                          # slug; "unsorted" until a sort has run
+topic: "expert routing collapse"       # free-form label from distillation
+author: distiller                      # human | distiller | agent:<name>
+spec: "0.2"
 ---
 
 # Grey v9 expert routing bug
@@ -42,8 +46,13 @@ One-to-three sentence summary in plain prose.
 
 Rules:
 
-- **Frontmatter keys** above are required except `author` (defaults to `distiller`).
-  Unknown keys MUST be preserved by any tool that rewrites a note.
+- **Frontmatter keys** above are required except `author` (defaults to `distiller`),
+  `segment` and `topic`. Free-text values (`title`, `segment`, `topic`) are
+  written as JSON strings, which are always valid YAML double-quoted scalars, so
+  any title survives any YAML reader. Unknown keys MUST be preserved by any tool
+  that rewrites a note. *(Known gap in the reference implementation:
+  `magnum sort` currently rewrites notes from its index and does not yet
+  preserve unknown keys or hand edits. See README, Known issues.)*
 - **Sections** `Decisions`, `Ideas`, `Open loops` are optional; omit when empty. Items
   are single-line list entries. Open loops SHOULD use task syntax (`- [ ]`) so any
   markdown task plugin works on them.
@@ -103,7 +112,7 @@ vault/
   PRIORITIES.md               # generated: the complete ordered priority list
   MANIFESTO.md                # optional copy of the principles
   config.json                 # projects list + settings (all optional)
-  inbox/*.md                  # unclassified notes
+  unsorted/*.md               # notes not yet placed by a sort
   projects/<slug>/
     STATUS.md                 # generated: open loops + recent decisions
     chats/*.md                # notes
@@ -146,7 +155,7 @@ scheme is `projects-queue` (per-project STATUS + a ≤3-item QUEUE ranked by
 closeness-to-done + a complete ordered PRIORITIES list one step deeper). Other schemes — flat/tag-based, chronological, PARA, one-big-pile —
 are equally valid. Schemes MUST NOT modify notes; they only add generated files.
 
-## 4. Convergence Layer (informative, v0.2+)
+## 4. Convergence Layer (informative, not yet implemented)
 
 The convergence layer reads all notes (and optionally external corpora such as an
 existing Obsidian vault), computes similarity across them, and writes generated files:
@@ -158,7 +167,7 @@ It is strictly additive and optional — removing its
 output files leaves a fully functional vault. User feedback (accept/reject a proposed
 connection) is recorded and constrains future passes.
 
-## 5. Agents (informative, v0.4+)
+## 5. Agents (informative, not yet implemented)
 
 The planned MCP server exposes: `ingest`, `query`, `read_queue`, `write_note`,
 `read_status`. Agents interact with the vault exclusively through the note format above,
