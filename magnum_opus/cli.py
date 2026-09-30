@@ -6,6 +6,7 @@
                   [--llm anthropic|openai --base-url URL --model NAME]
   magnum sort     --vault ./vault [--llm ... --model NAME]
   magnum converge --vault ./vault [--external ~/obsidian] [--backend builtin|local|openai]
+  magnum thesis   --vault ./vault [--dry-run] [--llm ... --model NAME]
   magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
@@ -17,7 +18,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import archive, redact, sort as sortmod, reindex as reindexmod
+from . import archive, redact, sort as sortmod, reindex as reindexmod, thesis as th
 from .distill import get_distiller
 from .llm import PROVIDERS, make_client
 from .estimate import estimate as run_estimate, DEFAULT_INPUT_RATE, DEFAULT_OUTPUT_RATE
@@ -273,6 +274,65 @@ def cmd_converge(args) -> int:
     return 0
 
 
+def cmd_thesis(args) -> int:
+    """Say what the whole body of work appears to be about (EMERGENT_THESIS.md)."""
+    vault = Vault(args.vault)
+    vault.sync_from_disk()
+    if not vault.state["notes"]:
+        print("No notes yet -- run `magnum ingest` first.")
+        return 1
+    if _require_model(args, "the thesis") is None:
+        return 2
+    model = args.model or TAXONOMY_MODEL
+    state = th.load_state(vault)
+    for change in th.record_ticks(vault, state):
+        print(f"  recorded: {change}")
+    prep = th.prepare(vault, state, max_notes=args.max_notes, max_claims=args.max_claims)
+    est = th.estimate(prep, args.max_tokens, args.input_rate, args.output_rate)
+    where = ("Anthropic" if args.llm == "anthropic" else
+             args.base_url or os.environ.get("MAGNUM_BASE_URL", "(MAGNUM_BASE_URL)"))
+    print(f"One call to {where} with model {model}:")
+    print(f"  sends     {len(prep.ids)} of {prep.notes_total} notes, "
+          f"{th.plural(len(prep.relationships), 'relationship')} "
+          f"(~{est['input_tokens']:,} tokens)")
+    if len(prep.ids) < prep.notes_total:
+        print(f"            (the rest are left out; --max-notes {prep.notes_total} "
+              "sends them all)")
+    if prep.skipped_external:
+        print(f"  not sent  {th.plural(prep.skipped_external, 'relationship')} "
+              "involving your external files")
+    if not prep.relationships:
+        print("  (no relationships: run `magnum converge` first to include them)")
+    print(f"  WORST-CASE COST  ${est['max_cost']:.2f}  (up to {args.max_tokens:,} output "
+          f"tokens at ${args.input_rate}/${args.output_rate} per M; check your "
+          "model's prices and pass --input-rate/--output-rate)")
+    if args.dry_run:
+        path = th.write_dry_run(vault, prep)
+        print(f"Dry run: nothing sent. The exact prompt is in {path}")
+        return 0
+    try:
+        client = make_client(args.llm, args.base_url)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        return 2
+    if not args.yes and input("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("Aborted. Nothing spent.")
+        return 1
+    try:
+        version = th.thesis(vault, client, model, prep, state,
+                            max_claims=args.max_claims, max_tokens=args.max_tokens)
+    except Exception as e:
+        print(f"Thesis failed: {e}", file=sys.stderr)
+        return 1
+    d = version["dropped"]
+    print(f"Version {version['version']}: {th.plural(len(version['claims']), 'claim')}"
+          + (f", {d['uncited']} dropped for citing no real note" if d["uncited"] else "")
+          + (f", {d['rejected']} dropped because you rejected them" if d["rejected"] else "")
+          + ".")
+    print(f"Open {args.vault}/EMERGENT_THESIS.md")
+    return 0
+
+
 def cmd_reindex(args) -> int:
     """Rebuild the index from the notes on disk."""
     vault = Vault(args.vault)
@@ -389,6 +449,28 @@ def main(argv=None) -> int:
     cv.add_argument("--yes", action="store_true",
                     help="Skip the confirmation before sending text to a server")
     cv.set_defaults(func=cmd_converge)
+
+    ths = sub.add_parser("thesis",
+                         help="Say what your whole body of work appears to be about "
+                              "(writes EMERGENT_THESIS.md)")
+    ths.add_argument("--vault", default="./vault")
+    llm_flags(ths)
+    ths.add_argument("--model", default=None,
+                     help=f"anthropic default: {TAXONOMY_MODEL}; required for --llm openai")
+    ths.add_argument("--max-notes", type=int, default=th.DEFAULT_MAX_NOTES,
+                     help=f"Most notes to send (default {th.DEFAULT_MAX_NOTES})")
+    ths.add_argument("--max-claims", type=int, default=th.DEFAULT_MAX_CLAIMS,
+                     help=f"Most claims to keep (default {th.DEFAULT_MAX_CLAIMS})")
+    ths.add_argument("--max-tokens", type=int, default=th.DEFAULT_MAX_TOKENS,
+                     help=f"Output cap for the call (default {th.DEFAULT_MAX_TOKENS})")
+    ths.add_argument("--input-rate", type=float, default=th.DEFAULT_INPUT_RATE,
+                     help="$ per M input tokens, for the estimate")
+    ths.add_argument("--output-rate", type=float, default=th.DEFAULT_OUTPUT_RATE,
+                     help="$ per M output tokens, for the estimate")
+    ths.add_argument("--dry-run", action="store_true",
+                     help="Write the exact prompt to .magnum/thesis/prompt.txt; send nothing")
+    ths.add_argument("--yes", action="store_true", help="Skip the cost prompt")
+    ths.set_defaults(func=cmd_thesis)
 
     rex = sub.add_parser("reindex",
                          help="Rebuild the index from notes on disk (after a crash)")
