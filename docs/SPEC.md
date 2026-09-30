@@ -42,7 +42,14 @@ One-to-three sentence summary in plain prose.
 - [ ] Unfinished threads, phrased as next actions.
 
 **Touches:** [[shape-zero]] [[eve-zero]]
+
+**Source:** the Claude chat “Grey v9 expert routing bug” (2026-07-01) [open](https://claude.ai/chat/aaa-111)
 ```
+
+The `**Source:**` line (optional, since v0.8.0) says where the note came from, with a
+link that opens the original conversation. It is for finding, not content: readers
+MUST NOT treat it as the summary or as an item. Any view that points at a note SHOULD
+also say which conversation it came from, so every reference can be found.
 
 Rules:
 

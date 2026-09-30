@@ -28,7 +28,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from . import converge as conv
+from . import converge as conv, sources
 from .vault import _done, slugify
 
 BLOCK = re.compile(r"<!--proposal:(?P<id>p-[0-9a-f]{6})-->")
@@ -177,17 +177,20 @@ def apply(vault, state) -> list:
 # --- the generated view ------------------------------------------------------------------
 
 def _link(vault, rel) -> str:
+    """A cited file: with its origin when it is one of your notes."""
+    key = next((k for k, s in vault.state["segments"].items() if s.get("path") == rel), None)
+    if key:
+        return sources.where(vault, key)
     return f"[[{rel[:-3]}]]" if rel.endswith(".md") else rel
 
 
 def _block(vault, pid, p) -> list:
-    note = vault.state["segments"].get(p["segment_key"], {}).get("path") or ""
     lines = [f"### Close “{p['loop']}”? <!--proposal:{pid}-->",
-             f"{p['project']} · proposed by **{p['by']}**"
-             + (f" · in {_link(vault, note)}" if note else ""),
+             f"{p['project']} · proposed by **{p['by']}**",
+             f"- the loop is in {sources.where(vault, p['segment_key'])}",
              f"- why: {p['reason']}"]
     if p["evidence"]:
-        lines.append("- evidence: " + ", ".join(_link(vault, e) for e in p["evidence"]))
+        lines += ["- evidence:"] + [f"  - {_link(vault, e)}" for e in p["evidence"]]
     lines.append(f"- [{'x' if p['status'] == 'accepted' else ' '}] accept")
     lines.append(f"- [{'x' if p['status'] == 'rejected' else ' '}] reject")
     return lines + [""]

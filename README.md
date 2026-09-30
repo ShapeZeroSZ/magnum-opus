@@ -88,6 +88,7 @@ magnum converge --vault ~/vault                         # how your projects rela
 magnum thesis   --vault ~/vault                         # what it all appears to be about
 magnum serve    --vault ~/vault                         # let an AI assistant read it (MCP)
 magnum proposals --vault ~/vault                        # close the loops you agreed to close
+magnum find orbit social --vault ~/vault                # where is it? (add --export to search everything)
 magnum reindex  --vault ~/vault                         # rebuild index after a crash
 magnum status   --vault ~/vault                         # prints the queue
 ```
@@ -134,6 +135,8 @@ Done:
       allow it, add labelled notes of their own; never change yours (v0.6.0)
 - [x] Open-loop proposals: an assistant suggests a loop is done, you tick accept
       or reject, and only then is the loop closed (v0.7.0)
+- [x] Everything can be found: every reference names its original chat, with a
+      link to open it, and `magnum find` searches notes and the raw export (v0.8.0)
 
 Next, roughly in order:
 - [ ] **Zero-config.** `magnum` with no arguments does the right thing.
@@ -145,6 +148,31 @@ Open to anyone, any time (no milestone gates these):
       an existing Obsidian vault. Write a parser that produces conversations with stable
       message ids and it plugs in.
 - [ ] **More organization schemes** over the same note format (see SPEC §3).
+
+## Find: where is it?
+
+Every place that points at a note (`STATUS.md`, `CONVERGENCE.md`,
+`EMERGENT_THESIS.md`, `PROPOSALS.md`, and what an assistant tells you) also says
+which conversation it came from and when, with a link that opens it in Claude or
+ChatGPT:
+
+> [[projects/orbit/chats/…|Orbit social app]], from the ChatGPT chat “Late night
+> ideas” (2026-02-03) [open](https://chatgpt.com/c/…)
+
+New notes carry the same line at the bottom (`**Source:**`).
+
+To find something you remember but can't place:
+
+```bash
+magnum find orbit social --vault ~/vault
+magnum find orbit social --vault ~/vault --export ~/Downloads/claude-export
+```
+
+The first searches your notes. With `--export`, it also searches the original
+conversations directly, so it finds ideas that distillation left out, or that come
+from chats you haven't ingested yet. It runs on your computer, sends nothing and
+costs nothing. Dates are shown to help you find things; they are never used as
+evidence of how your work relates.
 
 ## Converge: how your work relates
 

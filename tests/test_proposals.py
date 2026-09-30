@@ -110,7 +110,13 @@ def test_a_proposal_changes_no_note(tmp_path):
     view = (tmp_path / "PROPOSALS.md").read_text()
     assert "### Close “rerun the load balancing ablation”?" in view
     assert "proposed by **agent:helper**" in view
-    assert "- evidence: [[projects/paper/chats/b1--s3]]\n" in view    # only real notes
+    evidence = view.split("- evidence:\n")[1].split("- [ ] accept")[0]
+    assert evidence == ("  - [[projects/paper/chats/b1--s3|Draft on sparse experts]], from "
+                        "the Claude chat “Draft on sparse experts” (2026-07-01) "
+                        "[open](https://claude.ai/chat/b1)\n")        # only real notes
+    assert "- the loop is in [[projects/router/chats/a1--s1|Expert routing collapse]], " \
+           "from the Claude chat “Expert routing collapse” (2026-07-01) " \
+           "[open](https://claude.ai/chat/a1)" in view
     assert "The ablation was rerun" in view
     assert "closing it is proposed" in _tool(s, "list_open_loops")[0]
 
