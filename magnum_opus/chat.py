@@ -41,7 +41,7 @@ CHARS_PER_TOKEN = 4.0
 TOOL = re.compile(r"<tool>(.*?)</tool>", re.DOTALL)
 
 READ_TOOLS = ("read_queue", "list_projects", "read_status", "list_open_loops", "search",
-              "read_note", "read_guidance")
+              "recall", "read_note", "read_guidance")
 
 TOOL_DOCS = """\
 Read (free, no confirmation):
@@ -49,6 +49,8 @@ Read (free, no confirmation):
 - list_projects {}                   every project, in priority order
 - read_status {"project": slug}      a project's open loops and decisions
 - list_open_loops {"project"?: slug} open loops, each with an id (l-...)
+- recall {"query": words, "project"?: slug}  the most relevant decisions, ideas and
+                                     loops, each with an id, date and source link
 - search {"query": words}            notes by content, with links to the original chats
 - read_note {"path": path}           one note's full text
 - read_guidance {}                   the person's standing instructions

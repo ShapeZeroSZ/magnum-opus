@@ -1,0 +1,6 @@
+{"timestamp": "2026-09-29T10:00:00", "role": "user", "content": "Let's plan the Orbit social app: friends circle around shared interests instead of a feed.", "metadata": {"rid": "r1", "mode": "fast"}}
+{"timestamp": "2026-09-29T10:00:05", "role": "assistant", "content": "Orbit could group people into rings by interest. First step: sketch the ring view.", "metadata": {"rid": "r1", "mode": "fast"}}
+not json at all
+{"timestamp": "2026-09-29T11:00:00", "owner": "anon-abc", "model": "grey", "mode": "fast"}
+{"timestamp": "2026-09-29T11:30:00", "role": "user", "content": "We decided the ring view ships before messaging.", "metadata": {"rid": "r2"}}
+{"timestamp": "2026-09-29T11:30:04", "role": "assistant", "content": "Noted: ring view first, messaging later.", "metadata": {"rid": "r2"}}

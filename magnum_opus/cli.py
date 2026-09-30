@@ -3,6 +3,7 @@
   magnum inspect  --export <folder>
   magnum estimate --export <folder>
   magnum ingest   --export <folder> --vault ./vault [--dry-run] [--limit N]
+                  (<folder>: Claude/ChatGPT export zips, or Shape Zero chat logs)
                   [--llm anthropic|openai --base-url URL --model NAME]
   magnum sort     --vault ./vault [--llm ... --model NAME]
   magnum converge --vault ./vault [--external ~/obsidian] [--backend builtin|local|openai]
@@ -549,7 +550,7 @@ def main(argv=None) -> int:
         sp.add_argument("--export", required=True,
                         help="Folder of export zips, or a conversations.json")
         sp.add_argument("--provider", default="auto",
-                        choices=["auto", "claude", "chatgpt"])
+                        choices=["auto", "claude", "chatgpt", "shapezero"])
         sp.add_argument("--no-strip-code", action="store_true",
                         help="Keep assistant code blocks (costs far more)")
         sp.add_argument("--strict-pii", action="store_true",
@@ -663,7 +664,7 @@ def main(argv=None) -> int:
     fnd.add_argument("--vault", default="./vault")
     fnd.add_argument("--export", default=None,
                      help="Also search this export folder (or conversations.json) directly")
-    fnd.add_argument("--provider", default="auto", choices=["auto", "claude", "chatgpt"])
+    fnd.add_argument("--provider", default="auto", choices=["auto", "claude", "chatgpt", "shapezero"])
     fnd.add_argument("--limit", type=int, default=10)
     fnd.set_defaults(func=cmd_find)
 

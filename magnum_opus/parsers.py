@@ -164,6 +164,51 @@ def parse_chatgpt(data: list) -> Iterator[Conversation]:
         )
 
 
+# ------------------------------------------------------------- Shape Zero ----
+
+def _first_line(messages, limit: int = 60) -> str:
+    """A day's title: how the person opened it, as chat apps title chats."""
+    first = next((m.text for m in messages if m.role == "user"), messages[0].text)
+    line = " ".join(first.split())
+    if len(line) <= limit:
+        return line
+    cut = line[:limit - 1]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(" ,;:") + "…"
+
+
+def parse_shapezero_logs(folder) -> list:
+    """One user's Shape Zero chat logs (data/logs/<owner>/<date>.jsonl), as
+    conversations. The logs carry no conversation id, so each day is one
+    conversation; segmentation then splits it by topic. Message ids come from
+    the request id that produced them, so they are stable across re-reads.
+    Metadata-only lines (anonymous traffic) carry no content and are skipped."""
+    folder = Path(folder)
+    owner = folder.name
+    convs = []
+    for path in sorted(folder.glob("*.jsonl")):
+        messages = []
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            role, text = entry.get("role"), entry.get("content")
+            if role not in ("user", "assistant") or not isinstance(text, str) or not text.strip():
+                continue
+            rid = str((entry.get("metadata") or {}).get("rid") or "")
+            messages.append(Message(
+                id=f"{rid}-{role}" if rid else _synthetic_id(path.stem, i, text),
+                role=role, text=text, created_at=_iso(entry.get("timestamp")),
+                raw_index=i, id_is_synthetic=not rid))
+        if messages:
+            convs.append(Conversation(
+                id=f"shapezero-{owner}-{path.stem}", title=_first_line(messages),
+                created_at=messages[0].created_at, updated_at=messages[-1].created_at,
+                provider="shapezero", messages=messages))
+    convs.sort(key=lambda c: c.updated_at or c.created_at, reverse=True)
+    return convs
+
+
 # ------------------------------------------------------------------ auto ----
 
 def detect_provider(data: list) -> str:
