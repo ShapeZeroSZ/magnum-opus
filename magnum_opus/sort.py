@@ -105,7 +105,8 @@ def _call_json(client, model, prompt, max_tokens, debug_path=None):
 
 def propose_taxonomy(notes, client, model: str, max_tokens: int = 16000,
                      assign_model: str = "claude-haiku-4-5-20251001",
-                     batch: int = 60, debug_dir=None, progress=print) -> tuple:
+                     batch: int = 60, debug_dir=None, progress=print,
+                     guidance: str = "") -> tuple:
     """Two stages, because one call cannot echo hundreds of ids without truncating.
 
     Stage 1 derives the taxonomy from topics alone -- small output, no ids.
@@ -117,7 +118,7 @@ def propose_taxonomy(notes, client, model: str, max_tokens: int = 16000,
 
     progress(f"  deriving taxonomy from {len(notes)} notes...")
     data = _call_json(client, model,
-                      TAXONOMY_PROMPT.format(n=len(notes), index=index),
+                      TAXONOMY_PROMPT.format(n=len(notes), index=index) + guidance,
                       max_tokens, dbg)
 
     meta = {}
@@ -156,7 +157,7 @@ def propose_taxonomy(notes, client, model: str, max_tokens: int = 16000,
         try:
             mapping = _call_json(
                 client, assign_model,
-                ASSIGN_PROMPT.format(projects=catalogue, index="\n".join(chunk)),
+                ASSIGN_PROMPT.format(projects=catalogue, index="\n".join(chunk)) + guidance,
                 4000, dbg)
         except RuntimeError as e:
             progress(f"    batch failed ({e}); those notes go to misc")

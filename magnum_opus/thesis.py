@@ -35,7 +35,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from . import converge as conv
+from . import converge as conv, guidance
 from .sort import _call_json
 
 DEFAULT_MAX_NOTES = 120
@@ -97,7 +97,7 @@ CLAIMS THE PERSON CONFIRMED:
 
 CLAIMS THE PERSON REJECTED:
 {rejected}
-"""
+{guidance}"""
 
 
 def _norm(text: str) -> str:
@@ -282,10 +282,21 @@ def prepare(vault, state, max_notes=DEFAULT_MAX_NOTES,
         notes="\n".join(_note_line(s, recs[k], docs[k]) for s, k in ids.items()),
         relationships="\n".join(rel_lines) or "(none: run `magnum converge` to add them)",
         confirmed="\n".join(f"- {c['text']}" for c in confirmed) or "(none)",
-        rejected="\n".join(f"- {c['text']}" for c in rejected) or "(none)")
+        rejected="\n".join(f"- {c['text']}" for c in rejected) or "(none)",
+        guidance=_guidance(vault))
     return Prepared(prompt=prompt, ids=ids, docs=docs, relationships=sent_rels,
                     confirmed=confirmed, rejected=rejected, skipped_external=skipped,
                     notes_total=len(vault.state["notes"]))
+
+
+def _guidance(vault) -> str:
+    """The person's guidance, with dates removed like everything else sent."""
+    text = guidance.read(vault)
+    if not text:
+        return ""
+    lines = [_clean(line, 400) for line in text.splitlines()]
+    return ("\nTHE PERSON'S STANDING GUIDANCE (follow it):\n"
+            + "\n".join(l for l in lines if l) + "\n")
 
 
 def estimate(prep: Prepared, max_tokens: int, input_rate: float, output_rate: float) -> dict:

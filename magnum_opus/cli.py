@@ -10,6 +10,8 @@
   magnum serve    --vault ./vault [--allow-write]    (MCP server for AI assistants)
   magnum proposals --vault ./vault                   (carry out what you accepted)
   magnum find     <words> --vault ./vault [--export <folder>]   (where is it?)
+  magnum chat     --vault ./vault [--llm ... --model NAME] [--max-cost 1.00]
+  magnum brief    --vault ./vault [--out FILE]      (a summary to hand to any assistant)
   magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
@@ -22,6 +24,7 @@ import sys
 from pathlib import Path
 
 from . import archive, redact, sort as sortmod, reindex as reindexmod, thesis as th
+from . import guidance as guidancemod
 from .distill import get_distiller
 from .llm import PROVIDERS, make_client
 from .estimate import estimate as run_estimate, DEFAULT_INPUT_RATE, DEFAULT_OUTPUT_RATE
@@ -216,6 +219,7 @@ def cmd_sort(args) -> int:
             notes, client, model,
             assign_model=assign_model,
             debug_dir=vault.root / ".magnum",
+            guidance=guidancemod.section(vault),
         )
     except Exception as e:
         print(f"Sort failed: {e}", file=sys.stderr)
@@ -426,6 +430,78 @@ def cmd_find(args) -> int:
     return 0
 
 
+def cmd_chat(args) -> int:
+    """Talk with the AI that works on your vault."""
+    from .chat import BudgetReached, Chat
+    root = Path(args.vault)
+    if not (root / ".magnum").is_dir():
+        print(f"No Magnum Opus vault at {root}.", file=sys.stderr)
+        return 2
+    if _require_model(args, "the chat") is None:
+        return 2
+    model = args.model or TAXONOMY_MODEL
+    try:
+        client = make_client(args.llm, args.base_url)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        return 2
+
+    def confirm(question):
+        try:
+            return input(f"\n{question} [y/N] ").strip().lower() in ("y", "yes")
+        except EOFError:
+            return False                        # no answer is a no
+
+    chat = Chat(root, client, model, confirm, max_cost=args.max_cost,
+                input_rate=args.input_rate, output_rate=args.output_rate)
+    print(f"Chatting with {model} about {root}. It reads your vault; every change asks "
+          f"you first; it never runs a full pass. Spending stops at ${args.max_cost:.2f} "
+          f"(at ${args.input_rate}/${args.output_rate} per M tokens). "
+          "Type /brief to export a brief, /quit to leave.")
+    said = list(args.say or [])
+    while True:
+        if args.say is not None:
+            if not said:
+                return 0
+            text = said.pop(0)
+            print(f"\nyou> {text}")
+        else:
+            try:
+                text = input("\nyou> ").strip()
+            except EOFError:
+                return 0
+        if not text:
+            continue
+        if text in ("/quit", "/exit"):
+            return 0
+        if text == "/brief":
+            from . import brief as briefmod
+            print(f"Wrote {briefmod.write(Vault(root))}")
+            continue
+        try:
+            reply = chat.turn(text)
+        except BudgetReached as e:
+            print(e)
+            return 1
+        except Exception as e:                      # keep the person's session honest
+            print(f"The model call failed: {e}", file=sys.stderr)
+            continue
+        print(f"\n{reply}\n  (about ${chat.spent:.2f} so far)")
+
+
+def cmd_brief(args) -> int:
+    """Write BRIEF.md: the state of your work, for any assistant."""
+    from . import brief as briefmod
+    root = Path(args.vault)
+    if not (root / ".magnum").is_dir():
+        print(f"No Magnum Opus vault at {root}.", file=sys.stderr)
+        return 2
+    path = briefmod.write(Vault(root), Path(args.out) if args.out else None)
+    print(f"Wrote {path}. Upload it to any assistant, or give it to Claude Code, "
+          "to pick up the work.")
+    return 0
+
+
 def cmd_reindex(args) -> int:
     """Rebuild the index from the notes on disk."""
     vault = Vault(args.vault)
@@ -590,6 +666,27 @@ def main(argv=None) -> int:
     fnd.add_argument("--provider", default="auto", choices=["auto", "claude", "chatgpt"])
     fnd.add_argument("--limit", type=int, default=10)
     fnd.set_defaults(func=cmd_find)
+
+    ch = sub.add_parser("chat", help="Talk with the AI that works on your vault")
+    ch.add_argument("--vault", default="./vault")
+    llm_flags(ch)
+    ch.add_argument("--model", default=None,
+                    help=f"anthropic default: {TAXONOMY_MODEL}; required for --llm openai")
+    ch.add_argument("--max-cost", type=float, default=1.0,
+                    help="Stop before spending more than this many dollars (default 1.00)")
+    ch.add_argument("--input-rate", type=float, default=th.DEFAULT_INPUT_RATE,
+                    help="$ per M input tokens, for the running cost")
+    ch.add_argument("--output-rate", type=float, default=th.DEFAULT_OUTPUT_RATE,
+                    help="$ per M output tokens, for the running cost")
+    ch.add_argument("--say", action="append", default=None,
+                    help="Say this and exit (repeatable), instead of an interactive chat")
+    ch.set_defaults(func=cmd_chat)
+
+    br = sub.add_parser("brief", help="Write BRIEF.md, the state of your work in one "
+                                      "file to hand to any assistant (free, no model)")
+    br.add_argument("--vault", default="./vault")
+    br.add_argument("--out", default=None, help="Write here instead of <vault>/BRIEF.md")
+    br.set_defaults(func=cmd_brief)
 
     rex = sub.add_parser("reindex",
                          help="Rebuild the index from notes on disk (after a crash)")

@@ -89,6 +89,8 @@ magnum thesis   --vault ~/vault                         # what it all appears to
 magnum serve    --vault ~/vault                         # let an AI assistant read it (MCP)
 magnum proposals --vault ~/vault                        # close the loops you agreed to close
 magnum find orbit social --vault ~/vault                # where is it? (add --export to search everything)
+magnum chat     --vault ~/vault                         # talk with the AI working on it
+magnum brief    --vault ~/vault                         # one file to hand to any assistant
 magnum reindex  --vault ~/vault                         # rebuild index after a crash
 magnum status   --vault ~/vault                         # prints the queue
 ```
@@ -137,6 +139,9 @@ Done:
       or reject, and only then is the loop closed (v0.7.0)
 - [x] Everything can be found: every reference names its original chat, with a
       link to open it, and `magnum find` searches notes and the raw export (v0.8.0)
+- [x] Chat, guidance and brief: talk with the AI working on your vault; your
+      corrections stick in `GUIDANCE.md`; `magnum brief` hands the state of your
+      work to any other assistant (v0.9.0)
 
 Next, roughly in order:
 - [ ] **Zero-config.** `magnum` with no arguments does the right thing.
@@ -148,6 +153,63 @@ Open to anyone, any time (no milestone gates these):
       an existing Obsidian vault. Write a parser that produces conversations with stable
       message ids and it plugs in.
 - [ ] **More organization schemes** over the same note format (see SPEC §3).
+
+## Chat: talk with the AI working on your vault
+
+```bash
+magnum chat --vault ~/vault                    # Claude by default; --max-cost 1.00
+magnum chat --vault ~/vault --llm openai --base-url http://localhost:11434/v1 --model llama3.1
+```
+
+Ask what it sees ("what's stalled?", "where did I talk about orbit?"), correct it,
+point it at an area, rearrange priorities, or tell it something is finished. It
+answers from your vault and links every note it mentions to the original chat.
+
+- **Every change asks you first.** Closing a loop, moving a note to another
+  project, reordering priorities, and adding to your guidance each show you exactly
+  what will change, and happen only if you say yes.
+- **It never runs a full pass.** Re-sorting everything, recomputing convergence
+  or writing a new thesis happen only when you run them, for example after a new
+  model comes out and you want it to reassess. The chat can suggest one and show
+  you the command; it can't start one.
+- **Your corrections stick.** When you correct it or state a preference, it
+  offers to remember it in `GUIDANCE.md`.
+- **Cost is shown and capped.** The running cost is shown after every reply, and
+  the chat stops before a message would pass `--max-cost` (default $1.00). With a
+  model on your own machine, pass `--input-rate 0 --output-rate 0`.
+
+Transcripts are kept in `.magnum/chats/`. `/brief` writes a brief; `/quit` leaves.
+
+## Guidance: corrections that stick
+
+`GUIDANCE.md` is yours: a plain file in the vault with your standing instructions,
+such as:
+
+- Grey and Shape Zero are one project.
+- Finish the paper before starting anything new.
+- The garden notes are personal; leave them out of the thesis.
+
+Write in it directly in Obsidian, or confirm additions from the chat. Every step
+that uses a model reads it first: `sort`, `thesis`, the chat, and any assistant
+connected with `magnum serve`. Tools only ever add to it, and only lines you
+confirmed; they never rewrite it.
+
+## Brief: hand your work to any assistant
+
+```bash
+magnum brief --vault ~/vault                   # writes BRIEF.md; free, no model call
+```
+
+`BRIEF.md` is the state of your work in one file:
+- your guidance and priorities;
+- each project's next step, open loops and recent decisions;
+- how your projects relate, and the current thesis;
+- what's waiting for your decision.
+
+Every item links to its original conversation, and those links work outside the
+vault. Upload it to a new conversation, or give it to Claude Code, and it can pick
+up the work. It's built by code from what your vault says, so it's exact and costs
+nothing.
 
 ## Find: where is it?
 

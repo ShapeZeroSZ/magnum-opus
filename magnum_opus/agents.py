@@ -36,7 +36,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, proposals as props, sources
+from . import __version__, guidance, proposals as props, sources
 from .converge import UNPLACED, terms
 from .vault import Vault, _done, slugify
 
@@ -77,6 +77,10 @@ TOOLS = [
                                     "limit": {"type": "integer", "minimum": 1,
                                               "maximum": 50}},
                      "required": ["query"]}},
+    {"name": "read_guidance",
+     "description": "The person's standing instructions (GUIDANCE.md): how they "
+                    "want their work handled. Follow them.",
+     "inputSchema": {"type": "object", "properties": {}}},
     {"name": "read_note",
      "description": "The full text of one markdown file in the vault, by its "
                     "path relative to the vault (as returned by search).",
@@ -225,6 +229,9 @@ class Server:
                          + f" | from {sources.origin(rec)}")
         return "\n".join(lines) or "No notes match."
 
+    def read_guidance(self, args):
+        return guidance.read(self._vault()) or "The person has written no guidance yet."
+
     def read_note(self, args):
         self._vault()
         rel = str(args.get("path", "")).strip()
@@ -292,6 +299,14 @@ class Server:
 
     # --- protocol ---------------------------------------------------------------
 
+    def _guidance_note(self) -> str:
+        try:
+            text = guidance.read(self._vault())
+        except ToolError:
+            return ""
+        return (f"\n\nThe person's standing guidance (GUIDANCE.md), to follow:\n{text}"
+                if text else "")
+
     def tools(self) -> list:
         return TOOLS + ([WRITE_TOOL, PROPOSE_TOOL] if self.allow_write else [])
 
@@ -321,7 +336,8 @@ class Server:
                        "may propose closing an open loop with propose_close; the person "
                        "decides. "
                        if self.allow_write else "The vault is read-only for you. ")
-                    + "You cannot change the person's notes.")})
+                    + "You cannot change the person's notes."
+                    + self._guidance_note())})
         if method == "ping":
             return _result(mid, {})
         if method == "tools/list":

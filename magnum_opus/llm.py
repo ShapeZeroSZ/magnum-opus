@@ -47,8 +47,8 @@ class _Messages:
     def __init__(self, client):
         self._client = client
 
-    def create(self, model: str, max_tokens: int, messages: list, **_):
-        return self._client._chat(model, max_tokens, messages)
+    def create(self, model: str, max_tokens: int, messages: list, system: str = "", **_):
+        return self._client._chat(model, max_tokens, messages, system)
 
 
 class OpenAICompatibleClient:
@@ -97,7 +97,10 @@ class OpenAICompatibleClient:
             out += vecs
         return out
 
-    def _chat(self, model: str, max_tokens: int, messages: list) -> Response:
+    def _chat(self, model: str, max_tokens: int, messages: list,
+              system: str = "") -> Response:
+        if system:
+            messages = [{"role": "system", "content": system}] + list(messages)
         data = self._post("/chat/completions", {"model": model, "max_tokens": max_tokens,
                                                  "messages": messages})
         try:
