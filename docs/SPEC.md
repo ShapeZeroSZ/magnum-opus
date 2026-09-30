@@ -131,6 +131,8 @@ vault/
   or delete notes with any editor. Tools find notes by identity (their
   `conversation_id`, `start_message`, `end_message`), never by path. A tool may change
   only two things in an existing note: which folder it sits in, and its `project:` line.
+  The one exception is an open loop the person has decided to close (§5): the tool
+  ticks that loop's checkbox, and changes nothing else.
   A note deleted by the person stays deleted: tools MUST NOT recreate it. Files without
   Magnum Opus frontmatter belong to the person and are never modified.
 - A vault with only notes and no generated files is still a valid vault.
@@ -230,6 +232,22 @@ Reference implementation (`magnum serve`, v0.6.0): an MCP server over stdio.
   suggestion. Agent notes carry no `conversation_id`, so they are not distilled
   notes: sort, convergence and the thesis MUST NOT use them as evidence.
 - **Agents cannot spend.** No agent tool calls a paid API.
+
+Open-loop proposals (`propose_close`, v0.7.0):
+
+- With `--allow-write`, an agent may propose closing an open loop, identified by
+  the id `list_open_loops` gives it. It must give a reason and may cite notes. A
+  proposal changes no note: it is recorded in `.magnum/proposals.json` and shown
+  in `PROPOSALS.md`, which is generated. Each proposal there is a block headed by
+  `<!--proposal:p-xxxxxx-->`, ending with `- [ ] accept` and `- [ ] reject`.
+- Ticks are read back by the same rules as `CONVERGENCE.md`. Before anything
+  regenerates `PROPOSALS.md`, the person's ticks MUST be recorded, so they are
+  never lost.
+- Only a command the person runs (`magnum proposals`) carries out an accepted
+  proposal. It ticks exactly that loop's checkbox, and only if the loop is still
+  open with the same text; otherwise the proposal is resolved and nothing changes.
+- A rejected loop MUST NOT be proposed again unless the person unticks the
+  rejection. Each agent has at most 20 proposals waiting at once.
 
 ## Versioning
 

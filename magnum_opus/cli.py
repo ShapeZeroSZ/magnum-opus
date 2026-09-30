@@ -8,6 +8,7 @@
   magnum converge --vault ./vault [--external ~/obsidian] [--backend builtin|local|openai]
   magnum thesis   --vault ./vault [--dry-run] [--llm ... --model NAME]
   magnum serve    --vault ./vault [--allow-write]    (MCP server for AI assistants)
+  magnum proposals --vault ./vault                   (carry out what you accepted)
   magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
@@ -343,9 +344,31 @@ def cmd_serve(args) -> int:
         return 2
     # stdout carries the protocol; anything for the person goes to stderr.
     print(f"magnum serve: {root.resolve()} "
-          + ("(agents may add labelled notes in agents/)" if args.allow_write
+          + ("(agents may add labelled notes in agents/ and propose closing loops "
+             "in PROPOSALS.md)" if args.allow_write
              else "(read-only)"), file=sys.stderr)
     Server(root, allow_write=args.allow_write, agent_name=args.agent_name).serve()
+    return 0
+
+
+def cmd_proposals(args) -> int:
+    """Carry out the proposals you accepted in PROPOSALS.md."""
+    from . import proposals as props
+    vault = Vault(args.vault)
+    vault.sync_from_disk()
+    state = props.load_state(vault)
+    if not state["proposals"]:
+        print("No proposals yet. Agents connected with `magnum serve --allow-write` "
+              "can propose closing open loops.")
+        return 0
+    changes = props.record_ticks(vault, state) + props.apply(vault, state)
+    vault.rebuild_rollups()                     # closed loops leave STATUS and QUEUE
+    vault.save()
+    changes += props.refresh(vault, state)
+    for change in changes:
+        print(f"  {change}")
+    waiting = sum(1 for p in state["proposals"].values() if p["status"] == "proposed")
+    print(f"{waiting} waiting for you. Open {args.vault}/PROPOSALS.md")
     return 0
 
 
@@ -493,10 +516,16 @@ def main(argv=None) -> int:
     srv.add_argument("--vault", default="./vault")
     srv.add_argument("--allow-write", action="store_true",
                      help="Let agents add notes of their own in agents/<name>/, labelled "
-                          "as theirs. They can never change, move or delete your notes.")
+                          "as theirs, and propose closing open loops for you to decide. "
+                          "They can never change, move or delete your notes.")
     srv.add_argument("--agent-name", default=None,
                      help="Name to label agent notes with (default: the client's name)")
     srv.set_defaults(func=cmd_serve)
+
+    prp = sub.add_parser("proposals",
+                         help="Close the open loops whose proposals you accepted")
+    prp.add_argument("--vault", default="./vault")
+    prp.set_defaults(func=cmd_proposals)
 
     rex = sub.add_parser("reindex",
                          help="Rebuild the index from notes on disk (after a crash)")
