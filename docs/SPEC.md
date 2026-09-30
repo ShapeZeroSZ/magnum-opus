@@ -164,7 +164,7 @@ scheme is `projects-queue` (per-project STATUS + a ≤3-item QUEUE ranked by
 closeness-to-done + a complete ordered PRIORITIES list one step deeper). Other schemes — flat/tag-based, chronological, PARA, one-big-pile —
 are equally valid. Schemes MUST NOT modify notes; they only add generated files.
 
-## 4. Convergence Layer (informative, not yet implemented)
+## 4. Convergence Layer
 
 The convergence layer reads all notes (and optionally external corpora such as an
 existing Obsidian vault), computes similarity across them, and writes generated files:
@@ -175,6 +175,24 @@ relationships are proposed on content alone. Timestamps answer *when*, not *with
 It is strictly additive and optional — removing its
 output files leaves a fully functional vault. User feedback (accept/reject a proposed
 connection) is recorded and constrains future passes.
+
+Reference implementation (`magnum converge`, v0.4.0; `EMERGENT_THESIS.md` is not yet
+implemented):
+
+- Relationships are between groups: a project, or a single note that has no project
+  yet, or a single external file. Documents in the same group are never compared, and
+  neither are two segments of the same source conversation.
+- Each relationship in `CONVERGENCE.md` is a block headed by
+  `<!--convergence:c-xxxxxx-->`, where the id is derived from the two groups (stable
+  across runs). The block lists its evidence as note links and ends with two task
+  lines, `- [ ] accept` and `- [ ] reject`.
+- Before regenerating, a tool MUST read the existing ticks and record them:
+  - `accept` ticked: accepted;
+  - `reject` ticked: rejected, never proposed again;
+  - neither ticked on a previously decided id: the decision is withdrawn;
+  - both ticked: nothing changes.
+
+  Decisions live in `.magnum/convergence.json`, marked `by: human`.
 
 ## 5. Agents (informative, not yet implemented)
 
