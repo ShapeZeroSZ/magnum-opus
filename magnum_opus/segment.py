@@ -20,6 +20,8 @@ import json
 import re
 from dataclasses import dataclass
 
+from .llm import response_text
+
 SKELETON_CHARS = 200
 DEFAULT_MAX_MESSAGES = 40    # heuristic fallback window
 MIN_SEGMENT_MESSAGES = 4
@@ -90,7 +92,7 @@ def llm_segments(conv, client, model: str, max_tokens: int = 4000) -> list:
         model=model, max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+    text = response_text(resp)
     text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
     try:
         data = json.loads(text)
@@ -100,6 +102,8 @@ def llm_segments(conv, client, model: str, max_tokens: int = 4000) -> list:
     valid = {m.id for m in conv.messages}
     segs = []
     for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
         s, e = str(item.get("start_id", "")), str(item.get("end_id", ""))
         if s in valid and e in valid:
             segs.append(Segment(conv.id, s, e, str(item.get("label", ""))[:60]))

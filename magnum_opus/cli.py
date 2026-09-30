@@ -1,25 +1,40 @@
 """magnum -- CLI for Magnum Opus.
 
-  magnum inspect --export <folder>
-  magnum estimate --export <folder> [--vault ./vault]
+  magnum inspect  --export <folder>
+  magnum estimate --export <folder>
   magnum ingest   --export <folder> --vault ./vault [--dry-run] [--limit N]
+                  [--llm anthropic|openai --base-url URL --model NAME]
+  magnum sort     --vault ./vault [--llm ... --model NAME]
+  magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from . import archive, redact, sort as sortmod, reindex as reindexmod
 from .distill import get_distiller
+from .llm import PROVIDERS, make_client
 from .estimate import estimate as run_estimate, DEFAULT_INPUT_RATE, DEFAULT_OUTPUT_RATE
 from .parsers import load_export
 from .segment import segment_conversation, Segment
 from .vault import Vault
 
-SEGMENT_MODEL = "claude-haiku-4-5-20251001"
+SEGMENT_MODEL = "claude-haiku-4-5-20251001"   # anthropic default for segmentation
+TAXONOMY_MODEL = "claude-opus-5"                # anthropic default for the sort pass
+ASSIGN_MODEL = "claude-haiku-4-5-20251001"      # anthropic default for assignment
+
+
+def _require_model(args, what: str) -> str | None:
+    """Anthropic has sensible defaults; other providers must name a model."""
+    if args.llm != "anthropic" and not args.model:
+        print(f"--model is required with --llm {args.llm} ({what}).", file=sys.stderr)
+        return None
+    return args.model or ""
 
 
 def _load(args):
@@ -34,10 +49,10 @@ def _load(args):
     return convs
 
 
-def _segments(convs, client=None):
+def _segments(convs, client=None, model=SEGMENT_MODEL):
     out = {}
     for c in convs:
-        out[c.id] = segment_conversation(c, client=client, model=SEGMENT_MODEL)
+        out[c.id] = segment_conversation(c, client=client, model=model)
     return out
 
 
@@ -69,6 +84,21 @@ def cmd_ingest(args) -> int:
     convs = _load(args)
 
     backend = "heuristic" if args.dry_run else args.backend
+    if backend == "anthropic":          # the pre-0.3.5 spelling means Claude
+        args.llm = "anthropic"
+    llm_client, segment_model = None, SEGMENT_MODEL
+    if backend != "heuristic":
+        if _require_model(args, "distillation") is None:
+            return 2
+        if args.llm != "anthropic":
+            segment_model = args.model
+        # Building a client sends nothing; doing it before the estimate means a
+        # missing key or URL fails now, not after the user has said yes.
+        try:
+            llm_client = make_client(args.llm, args.base_url)
+        except RuntimeError as e:
+            print(e, file=sys.stderr)
+            return 2
 
     # Estimate FIRST, from free heuristic segmentation, and include the cost of
     # the segmentation calls themselves. Nothing reaches the API before the user
@@ -81,7 +111,8 @@ def cmd_ingest(args) -> int:
             return 1
 
     distiller = get_distiller(backend, vault.known_projects(),
-                              model=args.model, strip_code=not args.no_strip_code)
+                              model=args.model, strip_code=not args.no_strip_code,
+                              client=llm_client, provider=args.llm)
     client = getattr(distiller, "client", None)
     if backend == "heuristic":
         print("(heuristic backend: offline, no API calls)")
@@ -103,7 +134,7 @@ def cmd_ingest(args) -> int:
             done += 1
             print(f"  segmenting [{done}/{n_long}] {conv.title[:50]!r} "
                   f"({len(conv.messages)} messages)...", flush=True)
-        segs = segment_conversation(conv, client=client, model=SEGMENT_MODEL)
+        segs = segment_conversation(conv, client=client, model=segment_model)
         segs_by_conv[conv.id] = segs
         cache[conv.id] = {"stamp": stamp,
                           "segments": [{"start": s.start_id, "end": s.end_id,
@@ -158,19 +189,22 @@ def cmd_sort(args) -> int:
         print("No notes yet -- run `magnum ingest` first.")
         return 1
 
-    import anthropic
-    import os
-    headers = {}
-    ws = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
-    if ws:
-        headers["anthropic-workspace-id"] = ws
-    client = anthropic.Anthropic(default_headers=headers or None)
+    if _require_model(args, "the taxonomy pass") is None:
+        return 2
+    model = args.model or TAXONOMY_MODEL
+    assign_model = args.assign_model or (ASSIGN_MODEL if args.llm == "anthropic"
+                                         else model)
+    try:
+        client = make_client(args.llm, args.base_url)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        return 2
 
     print(f"Sorting {len(notes)} notes into projects...")
     try:
         assignment, described = sortmod.propose_taxonomy(
-            notes, client, args.model,
-            assign_model=args.assign_model,
+            notes, client, model,
+            assign_model=assign_model,
             debug_dir=vault.root / ".magnum",
         )
     except Exception as e:
@@ -184,7 +218,7 @@ def cmd_sort(args) -> int:
     sortmod.cleanup_unsorted(vault)
     print("\nDerived projects:")
     for slug in sorted(counts, key=lambda s: -counts[s]):
-        desc = vault.config.get("project_descriptions", {}).get(slug, "")
+        desc = vault.config.get("project_meta", {}).get(slug, {}).get("description", "")
         print(f"  {counts[slug]:4d}  {slug:28} {desc[:60]}")
     print(f"\nDone. Open {args.vault}/QUEUE.md")
     return 0
@@ -204,7 +238,7 @@ def cmd_reindex(args) -> int:
               "from an older version; those items are marked unverified.")
     if result["unreadable"]:
         print(f"  {result['unreadable']} files could not be parsed.")
-    print(f"Done. Re-running ingest will now skip work already completed.")
+    print("Done. Re-running ingest will now skip work already completed.")
     return 0
 
 
@@ -220,6 +254,15 @@ def main(argv=None) -> int:
         prog="magnum",
         description="Distill AI chat exports into a completion-focused vault.")
     sub = p.add_subparsers(dest="command", required=True)
+
+    def llm_flags(sp):
+        sp.add_argument("--llm", default=os.environ.get("MAGNUM_PROVIDER", "anthropic"),
+                        choices=list(PROVIDERS),
+                        help="Model provider: anthropic (Claude) or openai (any "
+                             "OpenAI-compatible server: OpenAI, Ollama, vLLM, ...)")
+        sp.add_argument("--base-url", default=None,
+                        help="Server URL for --llm openai (or MAGNUM_BASE_URL); "
+                             "API key from MAGNUM_API_KEY")
 
     def common(sp, vault=True):
         sp.add_argument("--export", required=True,
@@ -245,10 +288,14 @@ def main(argv=None) -> int:
 
     ing = sub.add_parser("ingest", help="Distill an export into the vault")
     common(ing)
-    ing.add_argument("--backend", default="anthropic",
-                     choices=["anthropic", "heuristic"])
+    ing.add_argument("--backend", default="llm",
+                     choices=["llm", "anthropic", "heuristic"],
+                     help="llm (default) or heuristic (offline); "
+                          "'anthropic' is kept as an alias of llm")
+    llm_flags(ing)
     ing.add_argument("--model", default=None,
-                     help="Override distillation model (default: Haiku 4.5)")
+                     help="Distillation model (anthropic default: Haiku 4.5; "
+                          "required for --llm openai)")
     ing.add_argument("--limit", type=int, default=0)
     ing.add_argument("--dry-run", action="store_true")
     ing.add_argument("--yes", action="store_true", help="Skip the cost prompt")
@@ -259,10 +306,13 @@ def main(argv=None) -> int:
     srt = sub.add_parser("sort",
                          help="Derive project structure from all notes at once")
     srt.add_argument("--vault", default="./vault")
-    srt.add_argument("--model", default="claude-opus-5",
-                     help="Model for the taxonomy pass (one call; quality matters)")
-    srt.add_argument("--assign-model", default="claude-haiku-4-5-20251001",
-                     help="Model for assigning notes to projects (mechanical)")
+    llm_flags(srt)
+    srt.add_argument("--model", default=None,
+                     help="Model for the taxonomy pass (one call; quality matters). "
+                          f"anthropic default: {TAXONOMY_MODEL}; required for --llm openai")
+    srt.add_argument("--assign-model", default=None,
+                     help="Model for assigning notes to projects (mechanical). "
+                          f"anthropic default: {ASSIGN_MODEL}; otherwise --model")
     srt.set_defaults(func=cmd_sort)
 
     rex = sub.add_parser("reindex",

@@ -13,6 +13,7 @@ exactly.
 
 from __future__ import annotations
 
+import json
 import re
 
 FRONT = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
@@ -34,7 +35,13 @@ def _parse_front(text: str) -> dict:
         if ":" not in line:
             continue
         k, _, v = line.partition(":")
-        out[k.strip()] = v.strip().strip('"')
+        v = v.strip()
+        if v.startswith('"'):
+            try:
+                v = json.loads(v)            # written with json.dumps (v0.3.5+)
+            except ValueError:
+                v = v.strip('"')             # older notes: best effort
+        out[k.strip()] = v
     return out
 
 
@@ -55,7 +62,9 @@ def _parse_items(body: str) -> dict:
         if raw and raw != "no locator":
             lm = LOC.match(raw)
             if lm:
-                partial = len(lm.group("msg")) <= 8      # pre-v0.3.3 truncation
+                # Pre-v0.3.3 notes truncated ids to exactly 8 characters. A
+                # shorter id cannot be a truncation, so it is not suspect.
+                partial = len(lm.group("msg")) == 8
                 loc = {
                     "conversation_id": lm.group("conv"),
                     "message_id": lm.group("msg"),
@@ -118,7 +127,7 @@ def reindex(vault) -> dict:
             continue
         items = (record["decisions"] + record["ideas"] + record["open_loops"])
         if any(i["locator"] and not i["locator"]["verified"] and
-               len(i["locator"]["message_id"]) <= 8 for i in items):
+               len(i["locator"]["message_id"]) == 8 for i in items):
             partial += 1
         notes.append(record)
         vault.state["segments"][record["segment_key"]] = {

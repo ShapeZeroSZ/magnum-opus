@@ -9,8 +9,15 @@ your exports, keeps only the durable residue of each conversation, and maintains
 whose default view is deliberately small.
 
 **Local-first.** Your chat history is intimate. Everything lives in plain markdown on your
-disk, Obsidian-compatible. The only network call is the LLM distillation pass (bring your
-own API key), and there's a fully offline `--dry-run` mode.
+disk, Obsidian-compatible. The only network calls are the model passes, and you choose
+where they go: Claude under your own key, or any OpenAI-compatible server, including a
+model running on your own machine, in which case nothing leaves it. There's also a fully
+offline `--dry-run` mode.
+
+**Where this is going.** The goal is to close the gap between how fast AI lets ideas
+arrive and how fast a person can carry them through: fewer things held in your head,
+unfinished work tracked and finished, and eventually agents that act on the vault on
+your behalf, with every action they take recorded as theirs, never as yours.
 
 ## What it does
 
@@ -31,10 +38,11 @@ own API key), and there's a fully offline `--dry-run` mode.
 ## Install
 
 ```bash
-pip install -e ".[llm]"          # core + Anthropic backend
+pip install -e ".[llm]"          # core + Anthropic (Claude) provider
+pip install -e .                 # core only: enough for local / OpenAI-compatible models
 ```
 
-Then set your key. macOS/Linux:
+**Claude** (the default provider). Set your key. macOS/Linux:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-...
@@ -45,6 +53,20 @@ Windows (Command Prompt) — `set` lasts for the current window, `setx` persists
 ```
 set ANTHROPIC_API_KEY=sk-...
 ```
+
+**Any OpenAI-compatible server** instead: OpenAI, or a local model under Ollama,
+llama.cpp, vLLM or LM Studio. Pass `--llm openai`, the server's URL and a model name
+(an API key, if the server needs one, goes in `MAGNUM_API_KEY`):
+
+```bash
+magnum ingest --export ~/Downloads/claude-export --vault ~/vault \
+    --llm openai --base-url http://localhost:11434/v1 --model llama3.1
+magnum sort --vault ~/vault --llm openai --base-url http://localhost:11434/v1 --model llama3.1
+```
+
+`MAGNUM_PROVIDER` and `MAGNUM_BASE_URL` set the same defaults from the environment.
+Small local models make weaker notes than frontier ones. The locator rules below
+still hold, so a weak model yields unverified items, never false citations.
 
 `inspect` and `estimate` need no key and spend nothing.
 
@@ -79,7 +101,7 @@ vault/
   QUEUE.md                      ← the only file you need to open
   projects/<slug>/STATUS.md     ← rolling per-project state
   projects/<slug>/chats/*.md    ← distilled notes
-  inbox/*.md                    ← unclassified notes
+  unsorted/*.md                 ← notes not yet placed by `magnum sort`
   config.json                   ← known project slugs (seed this to improve routing)
 ```
 
@@ -88,15 +110,55 @@ view — the `[[links]]` in distilled notes are the raw material the convergence
 
 ## Roadmap
 
-- [x] v0.1 — Claude + ChatGPT parsers, API distillation, vault, ≤3-item queue
-- [x] v0.2 — shard-aware loader, redaction, segmentation, message-level locators
-- [ ] v0.2 — zero-config: `magnum` with no args does the right thing; convergence engine
-      (local embeddings, clustering, versioned `EMERGENT_THESIS.md`)
-- [ ] v0.3 — serverless PWA: upload export → queue, all client-side, bring-your-own-key,
-      local storage + one-tap vault export
-- [ ] v0.4 — agent layer: MCP server (`ingest`, `query`, `read_queue`, `write_note`),
-      provenance-tagged shared vaults
-- [ ] later — interop adapters (ai-vault archives, more providers), community schemes
+Done:
+- [x] Claude + ChatGPT parsers, model distillation, vault, ≤3-item queue
+- [x] Shard-aware loader, redaction, segmentation, message-level locators
+- [x] Corpus-wide sort (derived projects, judged ranking), crash-safe reindex
+- [x] Any model provider: Claude, or any OpenAI-compatible server (v0.3.5)
+- [x] Test suite and CI (v0.3.5)
+
+Next, roughly in order:
+- [ ] **Preserve hand edits.** `magnum sort` must keep unknown frontmatter keys and
+      anything written in a note by hand (see Known issues). Required before the
+      vault is safe to live in from Obsidian.
+- [ ] **Convergence engine.** Local embeddings and clustering across all notes, and
+      optionally an existing Obsidian vault, writing `CONVERGENCE.md` and a versioned
+      `EMERGENT_THESIS.md`. Relationships on content alone; time is provenance.
+- [ ] **Agent layer.** An MCP server (`ingest`, `query`, `read_queue`, `write_note`,
+      `read_status`) so assistants can read the vault and write provenance-tagged
+      notes, and later act on open loops for the user, every action recorded as
+      `author: agent:<name>`.
+- [ ] **Zero-config.** `magnum` with no arguments does the right thing.
+- [ ] **Browser app (PWA).** Upload an export and get your queue, all client-side,
+      bring-your-own-key, local storage, one-tap vault export.
+
+Open to anyone, any time (no milestone gates these):
+- [ ] **More sources.** Any place ideas pile up: other AI tools, notes apps, documents,
+      an existing Obsidian vault. Write a parser that produces conversations with stable
+      message ids and it plugs in.
+- [ ] **More organization schemes** over the same note format (see SPEC §3).
+
+## Known issues
+
+- `magnum sort` rewrites every note from its index. Unknown frontmatter keys and hand
+  edits made in a note (e.g. in Obsidian) are lost on the next sort, which breaks
+  SPEC §1. Until this is fixed, treat notes as generated and put your own writing in
+  separate files.
+- Items do not yet carry their own dates (SPEC §1 says they SHOULD).
+- The cost estimate prices tokens at Claude Haiku rates by default. With another
+  provider, pass that provider's rates with `--input-rate` / `--output-rate` (a model
+  on your own machine costs nothing per token).
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+The tests need no API key and no network: models are faked, and the
+OpenAI-compatible client is exercised against a local stub server. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 Design principles live in [MANIFESTO.md](MANIFESTO.md). The note format and vault layout
 are specified in [docs/SPEC.md](docs/SPEC.md) — schemes, adapters, and agents built

@@ -25,6 +25,8 @@ from __future__ import annotations
 import json
 import re
 
+from .llm import response_text
+
 TAXONOMY_PROMPT = """You are deriving the project structure of someone's body of work \
 from their distilled notes. Below is one line per note: a topic label and a one-line \
 summary.
@@ -87,7 +89,7 @@ def _call_json(client, model, prompt, max_tokens, debug_path=None):
         model=model, max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+    text = response_text(resp)
     text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
     try:
         return json.loads(text)
