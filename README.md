@@ -16,8 +16,10 @@ offline `--dry-run` mode.
 
 **Where this is going.** The goal is to close the gap between how fast AI lets ideas
 arrive and how fast a person can carry them through: fewer things held in your head,
-unfinished work tracked and finished, and eventually agents that act on the vault on
-your behalf, with every action they take recorded as theirs, never as yours.
+unfinished work tracked and finished, and AI assistants that help carry it forward.
+Your notes stay yours: an assistant can read them and, if you allow it, add notes of
+its own, each labelled as its suggestion. It never changes your notes, and nothing it
+writes counts as your decision until you act on it.
 
 ## What it does
 
@@ -84,6 +86,7 @@ magnum ingest   --export ~/Downloads/claude-export --vault ~/vault
 magnum sort     --vault ~/vault                         # derive project structure
 magnum converge --vault ~/vault                         # how your projects relate
 magnum thesis   --vault ~/vault                         # what it all appears to be about
+magnum serve    --vault ~/vault                         # let an AI assistant read it (MCP)
 magnum reindex  --vault ~/vault                         # rebuild index after a crash
 magnum status   --vault ~/vault                         # prints the queue
 ```
@@ -126,12 +129,13 @@ Done:
       evidence, your accept/reject feedback, and optional external vaults (v0.4.0)
 - [x] Emergent thesis: versioned, every claim citing real notes (checked in code),
       shaped by what you accept and reject, cost shown first (v0.5.0)
+- [x] Agent layer: an MCP server so AI assistants can read the vault and, if you
+      allow it, add labelled notes of their own; never change yours (v0.6.0)
 
 Next, roughly in order:
-- [ ] **Agent layer.** An MCP server (`ingest`, `query`, `read_queue`, `write_note`,
-      `read_status`) so assistants can read the vault and write provenance-tagged
-      notes, and later act on open loops for the user, every action recorded as
-      `author: agent:<name>`.
+- [ ] **Assistants that help finish work.** Let an assistant propose closing or
+      updating an open loop, for you to confirm with a tick, rather than only adding
+      notes. Your tick stays the decision.
 - [ ] **Zero-config.** `magnum` with no arguments does the right thing.
 - [ ] **Browser app (PWA).** Upload an export and get your queue, all client-side,
       bring-your-own-key, local storage, one-tap vault export.
@@ -217,6 +221,38 @@ if you want the relationships included.
 It uses the same providers as `sort`: Claude by default, or `--llm openai
 --base-url ... --model ...` for any OpenAI-compatible server, including one on
 your own machine.
+
+## Agents: let an AI assistant read your vault
+
+`magnum serve` is an [MCP](https://modelcontextprotocol.io) server, so any assistant
+that supports MCP (Claude Desktop, Claude Code, and others) can work with your vault.
+For Claude Desktop, add this to its `claude_desktop_config.json`:
+
+```json
+{"mcpServers": {"magnum-opus": {"command": "magnum",
+                                "args": ["serve", "--vault", "/path/to/vault"]}}}
+```
+
+For Claude Code: `claude mcp add magnum-opus -- magnum serve --vault ~/vault`.
+
+The assistant can read your queue, your projects and their status, your open loops,
+and any note, and it can search your notes. That's all, unless you allow more:
+
+- **Read-only by default.** The assistant cannot change a single file. Reading
+  doesn't even update the index.
+- **`--allow-write` lets it add notes, never change yours.** Its notes go in
+  `agents/<its name>/`. It cannot edit, move or delete any existing note, and it
+  never overwrites a file.
+- **You can always tell whose words are whose.** An assistant's note is marked as
+  its suggestion, in its properties (`author: agent:<name>`) and in its first line.
+  It stays a suggestion until you act on it. To make it yours, edit it, move it, or
+  change its `author`; delete it if it's wrong.
+- **Its notes are never evidence.** `sort`, `converge` and `thesis` don't read
+  them, so an assistant's guess can't shape your projects or claims about your work.
+- **It can't spend your money.** Nothing it can do calls a paid API; `ingest`,
+  `sort` and `thesis` stay with you, where the cost is shown first.
+- **It stays inside the vault.** It can't read files outside it, or the
+  `.magnum` and `.obsidian` folders.
 
 ## Living in the vault from Obsidian
 
