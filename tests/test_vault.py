@@ -136,7 +136,8 @@ def test_reindex_rebuilds_the_index_from_notes_alone(tmp_path):
     (tmp_path / ".magnum" / "state.json").unlink()
     v2 = Vault(tmp_path)
     result = reindex(v2)
-    assert result == {"notes": 1, "partial_locators": 0, "unreadable": 0}
+    assert result == {"notes": 1, "partial_locators": 0, "unreadable": 0,
+                      "other_files": 0}
     loc = v2.state["notes"][0]["decisions"][0]["locator"]
     assert loc["message_id"] == "m1" and loc["verified"]
 

@@ -116,11 +116,10 @@ Done:
 - [x] Corpus-wide sort (derived projects, judged ranking), crash-safe reindex
 - [x] Any model provider: Claude, or any OpenAI-compatible server (v0.3.5)
 - [x] Test suite and CI (v0.3.5)
+- [x] Safe to live in from Obsidian: hand edits, properties, renames, deletions and
+      your own project choices all survive (v0.3.6)
 
 Next, roughly in order:
-- [ ] **Preserve hand edits.** `magnum sort` must keep unknown frontmatter keys and
-      anything written in a note by hand (see Known issues). Required before the
-      vault is safe to live in from Obsidian.
 - [ ] **Convergence engine.** Local embeddings and clustering across all notes, and
       optionally an existing Obsidian vault, writing `CONVERGENCE.md` and a versioned
       `EMERGENT_THESIS.md`. Relationships on content alone; time is provenance.
@@ -138,12 +137,28 @@ Open to anyone, any time (no milestone gates these):
       message ids and it plugs in.
 - [ ] **More organization schemes** over the same note format (see SPEC §3).
 
+## Living in the vault from Obsidian
+
+The notes are yours. Open the vault in Obsidian and work in it; every `magnum`
+command reads your changes back and never overwrites them:
+
+- **Write anything** in a note: paragraphs, headings, properties (`tags`,
+  `aliases`, ...). It survives every `ingest`, `sort` and `reindex`.
+- **Tick an open loop** (`- [x]`) and it leaves `STATUS.md` and `QUEUE.md`, while
+  staying in the note.
+- **Change a note's `project:`** and that choice is yours: `sort` files the note
+  there, marks it `project_set_by: human`, and never moves it again. Delete that
+  property to hand the choice back.
+- **Rename or move a note** anywhere in the vault: it is found by identity, not path.
+- **Delete a note** and it stays deleted. It is not re-distilled or re-created.
+- **Your own files** (anything without Magnum Opus frontmatter) are never touched.
+
+`magnum sort` changes exactly two things in a note: its folder and its `project:`
+line. `QUEUE.md`, `PRIORITIES.md` and `STATUS.md` are generated, so edits made in
+those files are overwritten.
+
 ## Known issues
 
-- `magnum sort` rewrites every note from its index. Unknown frontmatter keys and hand
-  edits made in a note (e.g. in Obsidian) are lost on the next sort, which breaks
-  SPEC §1. Until this is fixed, treat notes as generated and put your own writing in
-  separate files.
 - Items do not yet carry their own dates (SPEC §1 says they SHOULD).
 - The cost estimate prices tokens at Claude Haiku rates by default. With another
   provider, pass that provider's rates with `--input-rate` / `--output-rate` (a model

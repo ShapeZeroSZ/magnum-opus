@@ -50,12 +50,15 @@ Rules:
   `segment` and `topic`. Free-text values (`title`, `segment`, `topic`) are
   written as JSON strings, which are always valid YAML double-quoted scalars, so
   any title survives any YAML reader. Unknown keys MUST be preserved by any tool
-  that rewrites a note. *(Known gap in the reference implementation:
-  `magnum sort` currently rewrites notes from its index and does not yet
-  preserve unknown keys or hand edits. See README, Known issues.)*
+  that rewrites a note.
+- **`project_set_by: human`** (optional) records that a person chose the note's
+  project. A tool MUST NOT change the project of such a note. Removing the key hands
+  the choice back to the tools. A tool that finds a note's `project:` changed from
+  what it last wrote MUST treat that as the person's choice and record it this way.
 - **Sections** `Decisions`, `Ideas`, `Open loops` are optional; omit when empty. Items
   are single-line list entries. Open loops SHOULD use task syntax (`- [ ]`) so any
-  markdown task plugin works on them.
+  markdown task plugin works on them. A ticked loop (`- [x]`) is closed: it stays in
+  the note and leaves generated views.
 - **Links** use `[[wikilink]]` syntax with slugs (lowercase, hyphenated). They are the
   raw material of the convergence layer and resolve against project slugs first, then
   note titles.
@@ -124,6 +127,12 @@ vault/
 - Generated files (`QUEUE.md`, `STATUS.md`) are owned by whichever scheme produced them
   and may be regenerated at any time; hand edits there are not durable. Notes are
   durable and are never regenerated destructively.
+- **The notes are the record; any index follows them.** A person may edit, rename, move
+  or delete notes with any editor. Tools find notes by identity (their
+  `conversation_id`, `start_message`, `end_message`), never by path. A tool may change
+  only two things in an existing note: which folder it sits in, and its `project:` line.
+  A note deleted by the person stays deleted: tools MUST NOT recreate it. Files without
+  Magnum Opus frontmatter belong to the person and are never modified.
 - A vault with only notes and no generated files is still a valid vault.
 
 ## 2a. Sorting
