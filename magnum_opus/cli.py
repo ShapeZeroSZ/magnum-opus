@@ -81,6 +81,10 @@ def cmd_estimate(args) -> int:
 
 def cmd_ingest(args) -> int:
     vault = Vault(args.vault)
+    # The notes on disk are the record: pick up hand edits, renames and
+    # deletions, and adopt notes the index lost, so nothing already on disk is
+    # distilled (or paid for) twice or overwritten, and nothing deleted returns.
+    vault.sync_from_disk()
     convs = _load(args)
 
     backend = "heuristic" if args.dry_run else args.backend
@@ -184,6 +188,7 @@ def cmd_ingest(args) -> int:
 def cmd_sort(args) -> int:
     """Derive the project taxonomy from the whole corpus at once."""
     vault = Vault(args.vault)
+    vault.sync_from_disk()
     notes = vault.state["notes"]
     if not notes:
         print("No notes yet -- run `magnum ingest` first.")
@@ -237,7 +242,10 @@ def cmd_reindex(args) -> int:
         print(f"  {result['partial_locators']} notes carry truncated locator ids "
               "from an older version; those items are marked unverified.")
     if result["unreadable"]:
-        print(f"  {result['unreadable']} files could not be parsed.")
+        print(f"  {result['unreadable']} note files could not be parsed.")
+    if result["other_files"]:
+        print(f"  {result['other_files']} other files in the vault are yours; "
+              "left untouched.")
     print("Done. Re-running ingest will now skip work already completed.")
     return 0
 

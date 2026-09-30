@@ -10,6 +10,12 @@ Layout:
     projects/<slug>/chats/*.md      distilled notes (one per segment)
     unsorted/*.md                   notes not yet placed by `magnum sort`
 
+The notes are the record and the index follows them (see sync_from_disk): a
+person may live in this vault from Obsidian -- add properties, write in a
+note, tick an open loop, rename, move or delete a file, change a note's
+project -- and no tool here overwrites that. Tools change exactly two things
+in an existing note: which folder it sits in, and its `project:` line.
+
 Incremental state is tracked at **message** level, not conversation level.
 These threads are living documents; keying on a conversation timestamp would
 re-distill four megabytes to capture twenty new messages.
@@ -25,6 +31,40 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SAFE = re.compile(r"[^a-z0-9\-]+")
+
+
+FRONTMATTER = re.compile(r"^---\n(.*?\n)---\n", re.DOTALL)
+PROJECT_LINE = re.compile(r"^project:.*$", re.MULTILINE)
+
+
+def _done(item) -> bool:
+    return bool(item.get("done") if isinstance(item, dict)
+                else getattr(item, "done", False))
+
+
+def set_project(text: str, slug: str, human: bool = False) -> str:
+    """Change only the `project:` line of a note's frontmatter (adding
+    `project_set_by: human` when asked). Everything else is left as it was,
+    including a byte-order mark and Windows line endings."""
+    bom = "\ufeff" if text.startswith("\ufeff") else ""
+    crlf = "\r\n" in text
+    body = text[len(bom):].replace("\r\n", "\n") if crlf else text[len(bom):]
+    out = _set_project_lf(body, slug, human)
+    return bom + (out.replace("\n", "\r\n") if crlf else out)
+
+
+def _set_project_lf(text: str, slug: str, human: bool) -> str:
+    m = FRONTMATTER.match(text)
+    if not m:
+        return text
+    fm = m.group(1)
+    if PROJECT_LINE.search(fm):
+        fm = PROJECT_LINE.sub(f"project: {slug}", fm, count=1)
+    else:
+        fm += f"project: {slug}\n"
+    if human and not re.search(r"^project_set_by:", fm, re.MULTILINE):
+        fm = PROJECT_LINE.sub(f"project: {slug}\nproject_set_by: human", fm, count=1)
+    return "---\n" + fm + "---\n" + text[m.end():]
 
 
 def slugify(s: str) -> str:
@@ -69,7 +109,8 @@ class Vault:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            # newline="": write exactly the characters given, on every OS.
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
                 fh.write(text)
                 fh.flush()
                 os.fsync(fh.fileno())
@@ -147,8 +188,88 @@ class Vault:
                                if n["segment_key"] != note.segment_key] + [d]
         return path
 
+    # ------------------------------------------------ the files are the record ----
+
+    def sync_from_disk(self) -> dict:
+        """Make the index agree with the note files, which win.
+
+        - A note's content (summary, items, ticked loops, properties) is read
+          back from its file, so hand edits flow into STATUS and QUEUE.
+        - A note is found by identity, so a renamed or moved file is followed.
+        - A note whose file is gone was deleted by the person: it leaves the
+          index and is remembered as deleted, so ingest never recreates it.
+        - A note whose `project:` differs from what the tools last wrote was
+          placed by the person, and is marked `project_set_by: human`.
+        - Notes on disk the index does not know (e.g. after losing the index)
+          are adopted as they are.
+        """
+        from .reindex import scan
+        found, _, _ = scan(self.root)
+        segs = self.state["segments"]
+        notes, seen = [], set()
+        for rec in self.state["notes"]:
+            key = rec["segment_key"]
+            seen.add(key)
+            if key not in found:
+                segs[key] = {"path": None, "project": rec.get("project"),
+                             "deleted": True}
+                continue
+            path, disk = found[key]
+            if (disk.get("project_set_by") == "human"
+                    or rec.get("project_set_by") == "human"
+                    or slugify(disk["project"]) != slugify(rec.get("project", ""))):
+                disk["project_set_by"] = "human"
+            notes.append(disk)
+            segs[key] = {"path": path.relative_to(self.root).as_posix(),
+                         "project": disk["project"]}
+        for key, (path, disk) in found.items():
+            if key in seen:
+                continue
+            notes.append(disk)
+            segs[key] = {"path": path.relative_to(self.root).as_posix(),
+                         "project": disk["project"]}
+        self.state["notes"] = notes
+        return {"notes": len(notes),
+                "deleted": sum(1 for s in segs.values() if s.get("deleted"))}
+
+    def move_note(self, segment_key: str, project: str, human: bool = False) -> Path:
+        """File a note under a project without touching anything else in it.
+
+        Only the `project:` line changes (and `project_set_by: human` is
+        recorded when the person chose it). Every other byte -- properties the
+        person added, their own paragraphs, ticked boxes -- is kept.
+        """
+        seg = self.state["segments"][segment_key]
+        src = self.root / seg["path"]
+        slug = self.canonical_slug(project)
+        if slug in ("inbox", "unsorted"):
+            note_dir = self.root / slug
+        else:
+            note_dir = self.root / "projects" / slug / "chats"
+            if slug not in self.config["projects"]:
+                self.config["projects"].append(slug)
+        dst = note_dir / src.name
+        if dst != src and dst.exists():                  # never overwrite a file
+            dst = note_dir / f"{src.stem}--{segment_key.split(':')[1][:8]}.md"
+        # Bytes, not read_text(): universal-newline reading would silently turn
+        # a Windows file's \r\n into \n, changing the person's file.
+        text = set_project(src.read_bytes().decode("utf-8"), slug, human)
+        self._atomic_write(dst, text)
+        if dst != src:
+            src.unlink()
+        seg.update({"path": dst.relative_to(self.root).as_posix(), "project": slug})
+        for rec in self.state["notes"]:
+            if rec["segment_key"] == segment_key:
+                rec["project"] = slug
+                if human:
+                    rec["project_set_by"] = "human"
+        return dst
+
     @staticmethod
-    def _item_line(item) -> str:
+    def _item_line(item, task: bool = False) -> str:
+        box = ""
+        if task:
+            box = "[x] " if _done(item) else "[ ] "
         if isinstance(item, dict):
             text, loc = item.get("text", ""), item.get("locator") or {}
         else:
@@ -158,20 +279,20 @@ class Vault:
                   else getattr(item, "anchor", ""))
         meta = f'<!--anchor:{anchor}-->' if anchor else ""
         if not loc:
-            return f"- {text}  `no locator`{meta}"
+            return f"- {box}{text}  `no locator`{meta}"
         mark = ("" if loc.get("verified")
                 else (" ambiguous" if loc.get("ambiguous") else " unverified"))
         # Full ids, not truncated: the markdown is the record, so it must carry
         # everything needed to rebuild the index or verify a citation.
-        return (f"- {text}  "
+        return (f"- {box}{text}  "
                 f"`{loc.get('conversation_id','')}#{loc.get('message_id','')}"
                 f" {loc.get('role','')}{mark}`{meta}")
 
     def _render(self, note, project: str) -> str:
-        def section(title, items):
+        def section(title, items, task=False):
             if not items:
                 return ""
-            body = "\n".join(self._item_line(i) for i in items)
+            body = "\n".join(self._item_line(i, task) for i in items)
             return f"\n## {title}\n{body}\n"
 
         links = " ".join(f"[[{slugify(l)}]]" for l in note.links)
@@ -199,13 +320,14 @@ class Vault:
             f"{note.summary}\n"
             + section("Decisions", note.decisions)
             + section("Ideas", note.ideas)
-            + section("Open loops", note.open_loops)
+            + section("Open loops", note.open_loops, task=True)
             + (f"\n**Touches:** {links}\n" if links else "")
         )
 
     # ---------------------------------------------------------- rollups ----
 
     def rebuild_rollups(self):
+        self.sync_from_disk()               # generated views follow the files
         by_project = {}
         for n in self.state["notes"]:
             by_project.setdefault(slugify(n["project"]), []).append(n)
@@ -222,7 +344,8 @@ class Vault:
     def _write_status(self, project, notes):
         pdir = self.root / "projects" / project
         pdir.mkdir(parents=True, exist_ok=True)
-        loops = [(self._item_line(l), n["title"]) for n in notes for l in n["open_loops"]]
+        loops = [(self._item_line(l), n["title"]) for n in notes
+                 for l in n["open_loops"] if not _done(l)]
         decisions = [(self._item_line(d), n["updated_at"][:10])
                      for n in notes for d in n["decisions"]]
         lines = [f"# {project} — STATUS",
@@ -246,7 +369,8 @@ class Vault:
             m = meta.get(project, {})
             if m.get("status") == "done":
                 continue
-            loops = [self._text(l) for n in notes for l in n["open_loops"]]
+            loops = [self._text(l) for n in notes for l in n["open_loops"]
+                     if not _done(l)]
             nxt = m.get("next_action") or (loops[0] if loops else "")
             if not nxt:
                 continue

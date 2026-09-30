@@ -176,37 +176,28 @@ def propose_taxonomy(notes, client, model: str, max_tokens: int = 16000,
 
 
 def apply_taxonomy(vault, assignment: dict, meta: dict) -> dict:
-    """Rewrite notes into their assigned projects and rebuild rollups."""
-    from .distill import Note, Item, Locator
+    """File notes into their assigned projects and rebuild rollups.
 
+    Notes are MOVED, never rewritten: only their folder and `project:` line
+    change, so anything the person added by hand survives every sort. A note
+    whose project the person set themselves keeps it -- a model's inference
+    never overrides a human decision.
+    """
+    vault.sync_from_disk()
     counts = {}
     for record in list(vault.state["notes"]):
-        slug = assignment.get(record["segment_key"], "misc")
-        record["project"] = slug
+        key = record["segment_key"]
+        human = record.get("project_set_by") == "human"
+        if human:
+            slug = vault.canonical_slug(record["project"])
+            meta.setdefault(slug, {"description": "placed here by you",
+                                   "status": "active", "next_action": "",
+                                   "rank_reason": "you placed notes here",
+                                   "rank": len(meta)})
+        else:
+            slug = assignment.get(key, "misc")
+        vault.move_note(key, slug, human=human)
         counts[slug] = counts.get(slug, 0) + 1
-
-        def items(raw):
-            out = []
-            for i in raw or []:
-                loc = i.get("locator") if isinstance(i, dict) else None
-                out.append(Item(
-                    i.get("text", "") if isinstance(i, dict) else str(i),
-                    i.get("anchor", "") if isinstance(i, dict) else "",
-                    Locator(**loc) if loc else None,
-                ))
-            return out
-
-        note = Note(
-            conversation_id=record["conversation_id"], segment_key=record["segment_key"],
-            title=record["title"], provider=record["provider"],
-            updated_at=record["updated_at"], project=slug,
-            topic=record.get("topic", ""), summary=record.get("summary", ""),
-            label=record.get("label", ""), start_id=record.get("start_id", ""),
-            end_id=record.get("end_id", ""), author=record.get("author", "distiller"),
-            decisions=items(record.get("decisions")), ideas=items(record.get("ideas")),
-            open_loops=items(record.get("open_loops")), links=record.get("links", []),
-        )
-        vault.write_note(note)
 
     vault.config["projects"] = sorted(counts)
     vault.config["project_meta"] = meta
@@ -216,12 +207,12 @@ def apply_taxonomy(vault, assignment: dict, meta: dict) -> dict:
 
 
 def cleanup_unsorted(vault):
-    """Remove note files left behind in /unsorted after reassignment."""
+    """Remove the /unsorted folder once sorting has emptied it.
+
+    Only an empty folder is removed. Anything still in it -- a note the person
+    placed there, or a file of their own -- is left exactly where it is.
+    """
     d = vault.root / "unsorted"
-    if not d.exists():
-        return
-    for f in d.glob("*.md"):
-        f.unlink()
     try:
         d.rmdir()
     except OSError:
