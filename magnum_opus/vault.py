@@ -14,7 +14,9 @@ The notes are the record and the index follows them (see sync_from_disk): a
 person may live in this vault from Obsidian -- add properties, write in a
 note, tick an open loop, rename, move or delete a file, change a note's
 project -- and no tool here overwrites that. Tools change exactly two things
-in an existing note: which folder it sits in, and its `project:` line.
+in an existing note: which folder it sits in, and its `project:` line. The one
+exception is a loop the person decided to close (close_loop): its checkbox is
+ticked, as they would tick it themselves.
 
 Incremental state is tracked at **message** level, not conversation level.
 These threads are living documents; keying on a conversation timestamp would
@@ -264,6 +266,32 @@ class Vault:
                 if human:
                     rec["project_set_by"] = "human"
         return dst
+
+    def close_loop(self, segment_key: str, text: str) -> bool:
+        """Tick one open loop in its note: `- [ ]` becomes `- [x]` on that one
+        line, exactly as ticking it in Obsidian would, and no other byte of
+        the file changes. Returns False when the note no longer has an open
+        loop with that text (it was edited, ticked or deleted by hand)."""
+        from .reindex import SECTIONS, _parse_items
+        path = self.state["segments"].get(segment_key, {}).get("path")
+        if not path or not (self.root / path).is_file():
+            return False
+        src = self.root / path
+        lines = src.read_bytes().decode("utf-8").splitlines(keepends=True)
+        section = None
+        for i, line in enumerate(lines):
+            bare = line.rstrip("\r\n")
+            if bare.startswith("## "):
+                section = SECTIONS.get(bare[3:].strip())
+                continue
+            if section != "open_loops" or not bare.startswith("- [ ] "):
+                continue
+            items = _parse_items("## Open loops\n" + bare)["open_loops"]
+            if items and items[0]["text"] == text:
+                lines[i] = "- [x] " + line[len("- [ ] "):]
+                self._atomic_write(src, "".join(lines))
+                return True
+        return False
 
     @staticmethod
     def _item_line(item, task: bool = False) -> str:

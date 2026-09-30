@@ -11,6 +11,9 @@ It is built so that you always know what an agent did and what you did:
 - **Agents add, they never change.** With `--allow-write`, an agent can add
   a note of its own in `agents/<name>/`. It cannot edit, move or delete any
   note, and it never overwrites a file.
+- **Agents propose, you decide.** With `--allow-write`, an agent can also
+  propose closing one of your open loops. The proposal goes to PROPOSALS.md;
+  the loop closes only if you accept and run `magnum proposals`.
 - **Labelled as the agent's.** Every note an agent adds says so, in its
   properties (`author: agent:<name>`) and in its first line, so a suggestion
   is never mistaken for a decision of yours. It is a suggestion until you act
@@ -34,7 +37,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__
+from . import __version__, proposals as props
 from .converge import UNPLACED, terms
 from .vault import Vault, _done, slugify
 
@@ -59,7 +62,8 @@ TOOLS = [
                      "required": ["project"]}},
     {"name": "list_open_loops",
      "description": "Open loops (unfinished items) across the vault or in one "
-                    "project, each with the note it comes from.",
+                    "project, each with its id and the note it comes from, and "
+                    "whether closing it was already proposed or rejected.",
      "inputSchema": {"type": "object",
                      "properties": {"project": {"type": "string"},
                                     "limit": {"type": "integer", "minimum": 1,
@@ -94,6 +98,24 @@ WRITE_TOOL = {
                                                "description": "Optional: the project "
                                                               "slug this is about"}},
                     "required": ["title", "body"]},
+}
+
+
+PROPOSE_TOOL = {
+    "name": "propose_close",
+    "description": "Propose to the person that one of their open loops is finished "
+                   "or no longer needed. It does not close anything: the proposal "
+                   "waits in PROPOSALS.md until the person accepts or rejects it. "
+                   "Give a specific reason and, if you can, the notes that show it.",
+    "inputSchema": {"type": "object",
+                    "properties": {"loop_id": {"type": "string",
+                                               "description": "From list_open_loops"},
+                                   "reason": {"type": "string"},
+                                   "evidence": {"type": "array",
+                                                "items": {"type": "string"},
+                                                "description": "Note paths, as returned "
+                                                               "by search"}},
+                    "required": ["loop_id", "reason"]},
 }
 
 
@@ -175,15 +197,16 @@ class Server:
         v = self._vault()
         want = slugify(args["project"]) if args.get("project") else None
         limit = int(args.get("limit") or 50)
+        status = props.status_of(props.load_state(v))
+        note = {"proposed": "; closing it is proposed",
+                "accepted": "; the person accepted closing it",
+                "rejected": "; the person rejected closing it"}
         out = []
-        for rec in v.state["notes"]:
-            project = slugify(rec.get("project", ""))
-            if want and project != want:
+        for loop in props.open_loops(v):
+            if want and loop["project"] != want:
                 continue
-            for loop in rec.get("open_loops", []):
-                if not _done(loop):
-                    text = loop.get("text", "") if isinstance(loop, dict) else str(loop)
-                    out.append(f"- [{project}] {text}  (from {self._path_of(v, rec)})")
+            out.append(f"- {loop['id']} [{loop['project']}] {loop['text']}  "
+                       f"(from {loop['path']}{note.get(status.get(loop['id']), '')})")
         more = len(out) - limit
         return ("\n".join(out[:limit]) + (f"\n... and {more} more" if more > 0 else "")) \
             or "No open loops."
@@ -266,10 +289,25 @@ class Server:
             fh.write(text)
         return f"Added {path.relative_to(self.root).as_posix()} (labelled as written by {name})."
 
+    def propose_close(self, args):
+        if not self.allow_write:
+            raise ToolError("This vault is read-only for agents. The person can allow "
+                            "proposals with `magnum serve --allow-write`.")
+        v = self._vault()
+        state = props.load_state(v)
+        props.record_ticks(v, state)          # the person's ticks first, never lost
+        try:
+            pid = props.propose(v, state, args.get("loop_id", ""), args.get("reason", ""),
+                                args.get("evidence") or [], self.agent_name or "agent")
+        except props.ProposalError as e:
+            raise ToolError(str(e))
+        props.refresh(v, state)
+        return (f"Proposed {pid}. Nothing is closed: the person decides in PROPOSALS.md.")
+
     # --- protocol ---------------------------------------------------------------
 
     def tools(self) -> list:
-        return TOOLS + ([WRITE_TOOL] if self.allow_write else [])
+        return TOOLS + ([WRITE_TOOL, PROPOSE_TOOL] if self.allow_write else [])
 
     def handle(self, msg):
         """One JSON-RPC message in, one response out (None for notifications)."""
@@ -293,7 +331,9 @@ class Server:
                     "conversations, grouped into projects. Read it to help them finish "
                     "their work. "
                     + ("You may add notes of your own with write_note; they are labelled "
-                       "as yours and are suggestions until the person acts on them. "
+                       "as yours and are suggestions until the person acts on them. You "
+                       "may propose closing an open loop with propose_close; the person "
+                       "decides. "
                        if self.allow_write else "The vault is read-only for you. ")
                     + "You cannot change the person's notes.")})
         if method == "ping":
@@ -303,7 +343,7 @@ class Server:
         if method == "tools/call":
             name = params.get("name")
             if name not in {t["name"] for t in self.tools()}:
-                if name == "write_note":
+                if name in ("write_note", "propose_close"):
                     return _tool(mid, "This vault is read-only for agents. The person "
                                       "can allow notes with `magnum serve --allow-write`.",
                                  error=True)

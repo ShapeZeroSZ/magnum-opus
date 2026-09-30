@@ -87,6 +87,7 @@ magnum sort     --vault ~/vault                         # derive project structu
 magnum converge --vault ~/vault                         # how your projects relate
 magnum thesis   --vault ~/vault                         # what it all appears to be about
 magnum serve    --vault ~/vault                         # let an AI assistant read it (MCP)
+magnum proposals --vault ~/vault                        # close the loops you agreed to close
 magnum reindex  --vault ~/vault                         # rebuild index after a crash
 magnum status   --vault ~/vault                         # prints the queue
 ```
@@ -131,11 +132,10 @@ Done:
       shaped by what you accept and reject, cost shown first (v0.5.0)
 - [x] Agent layer: an MCP server so AI assistants can read the vault and, if you
       allow it, add labelled notes of their own; never change yours (v0.6.0)
+- [x] Open-loop proposals: an assistant suggests a loop is done, you tick accept
+      or reject, and only then is the loop closed (v0.7.0)
 
 Next, roughly in order:
-- [ ] **Assistants that help finish work.** Let an assistant propose closing or
-      updating an open loop, for you to confirm with a tick, rather than only adding
-      notes. Your tick stays the decision.
 - [ ] **Zero-config.** `magnum` with no arguments does the right thing.
 - [ ] **Browser app (PWA).** Upload an export and get your queue, all client-side,
       bring-your-own-key, local storage, one-tap vault export.
@@ -254,6 +254,24 @@ and any note, and it can search your notes. That's all, unless you allow more:
 - **It stays inside the vault.** It can't read files outside it, or the
   `.magnum` and `.obsidian` folders.
 
+### When an assistant thinks something is done
+
+With `--allow-write`, an assistant can also suggest that one of your open loops is
+finished or no longer needed, with its reason and the notes that show it. Its
+suggestions collect in `PROPOSALS.md`, and nothing changes until you decide:
+
+- **Accept:** tick **accept**, then run `magnum proposals`. The loop is ticked
+  in its note, just as if you had ticked it yourself, and nothing else in the note
+  changes. It leaves `STATUS.md` and `QUEUE.md`.
+- **Reject:** tick **reject**. The loop stays open, and no assistant can suggest
+  closing it again unless you untick.
+- **Or do nothing.** If you tick the loop in the note yourself, the suggestion
+  simply goes away.
+
+The assistant can never close anything itself. If you've changed the loop's
+wording since accepting, `magnum proposals` leaves it alone. An assistant can have
+at most 20 suggestions waiting, so it can't flood you.
+
 ## Living in the vault from Obsidian
 
 The notes are yours. Open the vault in Obsidian and work in it; every `magnum`
@@ -271,8 +289,10 @@ command reads your changes back and never overwrites them:
 - **Your own files** (anything without Magnum Opus frontmatter) are never touched.
 
 `magnum sort` changes exactly two things in a note: its folder and its `project:`
-line. `QUEUE.md`, `PRIORITIES.md` and `STATUS.md` are generated, so edits made in
-those files are overwritten.
+line. `magnum proposals` ticks only the open loops you accepted closing. `QUEUE.md`,
+`PRIORITIES.md`, `STATUS.md`, `CONVERGENCE.md`, `EMERGENT_THESIS.md` and
+`PROPOSALS.md` are generated, so text you write in them is overwritten. The
+accept and reject ticks you make in the last three are read back first.
 
 ## Known issues
 
