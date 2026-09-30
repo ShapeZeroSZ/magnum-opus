@@ -51,7 +51,12 @@ def _json_members(path: Path, prefix: str = "") -> list:
 
 
 def load_conversations(folder: str | Path, provider: str = "auto") -> list:
-    """Load and merge every conversations shard in a folder."""
+    """Load and merge every conversations shard in a folder. A folder of
+    Shape Zero chat logs (*.jsonl, one per day) is read as those."""
+    if provider == "shapezero" or (provider == "auto" and not discover(folder)
+                                   and any(Path(folder).glob("*.jsonl"))):
+        from .parsers import parse_shapezero_logs
+        return parse_shapezero_logs(folder)
     shards = discover(folder).get("conversations", [])
     if not shards:
         raise FileNotFoundError(

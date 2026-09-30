@@ -19,7 +19,7 @@ import re
 
 from .converge import terms
 
-PROVIDER_NAMES = {"claude": "Claude", "chatgpt": "ChatGPT"}
+PROVIDER_NAMES = {"claude": "Claude", "chatgpt": "ChatGPT", "shapezero": "Shape Zero"}
 CHAT_URLS = {"claude": "https://claude.ai/chat/{id}",
              "chatgpt": "https://chatgpt.com/c/{id}"}
 SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]+$")

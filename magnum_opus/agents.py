@@ -77,6 +77,17 @@ TOOLS = [
                                     "limit": {"type": "integer", "minimum": 1,
                                               "maximum": 50}},
                      "required": ["query"]}},
+    {"name": "recall",
+     "description": "Memory: the decisions, ideas, open loops and summaries most "
+                    "relevant to a question, each small, with an id (m-...), its "
+                    "date and the link to its original conversation. Cite items by "
+                    "id. Prefer this to search when answering from the person's history.",
+     "inputSchema": {"type": "object",
+                     "properties": {"query": {"type": "string"},
+                                    "project": {"type": "string"},
+                                    "limit": {"type": "integer", "minimum": 1,
+                                              "maximum": 30}},
+                     "required": ["query"]}},
     {"name": "read_guidance",
      "description": "The person's standing instructions (GUIDANCE.md): how they "
                     "want their work handled. Follow them.",
@@ -228,6 +239,17 @@ class Server:
                          + re.sub(r"\s+", " ", rec.get("summary", ""))[:240]
                          + f" | from {sources.origin(rec)}")
         return "\n".join(lines) or "No notes match."
+
+    def recall(self, args):
+        from .recall import recall
+        v = self._vault()
+        if not terms(str(args.get("query", ""))):
+            raise ToolError("The query has no searchable words.")
+        hits = recall(v, str(args["query"]), int(args.get("limit") or 8),
+                      project=args.get("project") or None)
+        return "\n".join(f"- {h.id} [{h.kind}, {h.project}] {h.text} "
+                         f"(from {h.source}; note {h.note})" for h in hits) \
+            or "Nothing in memory matches."
 
     def read_guidance(self, args):
         return guidance.read(self._vault()) or "The person has written no guidance yet."

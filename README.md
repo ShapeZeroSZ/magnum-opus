@@ -142,6 +142,8 @@ Done:
 - [x] Chat, guidance and brief: talk with the AI working on your vault; your
       corrections stick in `GUIDANCE.md`; `magnum brief` hands the state of your
       work to any other assistant (v0.9.0)
+- [x] Memory for agents: `recall` returns small cited items with no model calls,
+      and Shape Zero chat logs are a source (v0.10.0)
 
 Next, roughly in order:
 - [ ] **Zero-config.** `magnum` with no arguments does the right thing.
@@ -361,6 +363,34 @@ suggestions collect in `PROPOSALS.md`, and nothing changes until you decide:
 The assistant can never close anything itself. If you've changed the loop's
 wording since accepting, `magnum proposals` leaves it alone. An assistant can have
 at most 20 suggestions waiting, so it can't flood you.
+
+## Recall: the vault as an agent's memory
+
+Connected assistants, the chat, and code (`from magnum_opus.recall import recall`)
+can ask the vault what it remembers about something. What comes back is built on
+what 2026 memory research found works:
+
+- **Small items, not whole notes.** Each result is one decision, idea, open loop
+  or summary, with its project, date and a link to the original conversation.
+- **No model calls.** Retrieval is keyword ranking (BM25), optionally combined
+  with meaning-based search if you supply an embedding function. It's fast, free,
+  and the same for any model reading the results.
+- **Checkable citations.** Every item has a stable id. A system using recall can
+  require that an answer cites only ids recall actually returned
+  (`check_citations`), so it can't cite something that isn't there.
+- **Dates shown, never scored.** When something was said never makes it relevant.
+  When two decisions from one project come back, the newer is listed first.
+- **Only your notes.** Notes written by assistants are never recalled as
+  evidence.
+
+### Shape Zero chat logs as a source
+
+Point `ingest` at one user's log folder (`data/logs/<owner>/`) and each day's
+chat becomes a conversation, titled by its opening message:
+
+```bash
+magnum ingest --export /srv/shapezero/data/logs/user-42 --vault /srv/vaults/user-42
+```
 
 ## Living in the vault from Obsidian
 
