@@ -176,8 +176,7 @@ It is strictly additive and optional — removing its
 output files leaves a fully functional vault. User feedback (accept/reject a proposed
 connection) is recorded and constrains future passes.
 
-Reference implementation (`magnum converge`, v0.4.0; `EMERGENT_THESIS.md` is not yet
-implemented):
+Reference implementation of `CONVERGENCE.md` (`magnum converge`, v0.4.0):
 
 - Relationships are between groups: a project, or a single note that has no project
   yet, or a single external file. Documents in the same group are never compared, and
@@ -193,6 +192,24 @@ implemented):
   - both ticked: nothing changes.
 
   Decisions live in `.magnum/convergence.json`, marked `by: human`.
+
+Reference implementation of `EMERGENT_THESIS.md` (`magnum thesis`, v0.5.0):
+
+- The file holds the current version: a statement, then claims. Every earlier
+  version is kept in `.magnum/thesis/v<N>.md`.
+- Every claim, and the statement, MUST cite notes that exist in the vault. This
+  is checked by the tool, not trusted from the model:
+  - a claim without such a citation is dropped, and the number dropped is shown;
+  - a statement without one means no version is written.
+- Each claim is a block headed by `<!--thesis:t-xxxxxx-->`, where the id is
+  derived from the claim's text. The block ends with `- [ ] accept` and
+  `- [ ] reject`. Ticks are read back by the same rules as `CONVERGENCE.md`.
+  - Accepted claims appear in every later version.
+  - A rejected claim is never written again.
+  - Decisions, with each claim's text, live in `.magnum/thesis.json`.
+- Nothing about when a note was written is sent to the model.
+- Relationships the person rejected are never sent, and neither is anything
+  from external corpora.
 
 ## 5. Agents (informative, not yet implemented)
 

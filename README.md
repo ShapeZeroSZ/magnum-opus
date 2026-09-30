@@ -33,9 +33,9 @@ your behalf, with every action they take recorded as theirs, never as yours.
 4. **Converge** — `magnum converge` proposes how your projects relate, on content alone,
    in `CONVERGENCE.md`: a handful of cross-project connections, each with the notes and
    words it rests on. You accept or reject them; your answers shape every later pass.
-   *(Next: a synthesis pass writing a versioned `EMERGENT_THESIS.md`: what this body of
-   work appears to be about, with cited evidence. The thesis is an output of the system,
-   not an input.)*
+   Then `magnum thesis` writes a versioned `EMERGENT_THESIS.md`: what this body of
+   work appears to be about, every claim citing notes that exist. The thesis is an
+   output of the system that you react to, not an input.
 
 ## Install
 
@@ -83,6 +83,7 @@ magnum estimate --export ~/Downloads/claude-export      # tokens and cost
 magnum ingest   --export ~/Downloads/claude-export --vault ~/vault
 magnum sort     --vault ~/vault                         # derive project structure
 magnum converge --vault ~/vault                         # how your projects relate
+magnum thesis   --vault ~/vault                         # what it all appears to be about
 magnum reindex  --vault ~/vault                         # rebuild index after a crash
 magnum status   --vault ~/vault                         # prints the queue
 ```
@@ -123,11 +124,10 @@ Done:
       your own project choices all survive (v0.3.6)
 - [x] Convergence, first pass: cross-project relationships on content alone, with
       evidence, your accept/reject feedback, and optional external vaults (v0.4.0)
+- [x] Emergent thesis: versioned, every claim citing real notes (checked in code),
+      shaped by what you accept and reject, cost shown first (v0.5.0)
 
 Next, roughly in order:
-- [ ] **Emergent thesis.** A synthesis pass over the accepted and proposed
-      relationships writing a versioned `EMERGENT_THESIS.md`, every claim citing notes
-      that exist (checked in code). Paid model calls, so estimate first.
 - [ ] **Agent layer.** An MCP server (`ingest`, `query`, `read_queue`, `write_note`,
       `read_status`) so assistants can read the vault and write provenance-tagged
       notes, and later act on open loops for the user, every action recorded as
@@ -180,6 +180,43 @@ The rules it keeps:
 Before `magnum sort`, notes are compared individually. After sorting, relationships
 are between projects. Scores are similarity heuristics, not probabilities. The
 built-in backend compares every pair of notes: about 10 seconds for 1,500 notes.
+
+## Thesis: what your work appears to be about
+
+```bash
+magnum thesis --vault ~/vault --dry-run     # see exactly what would be sent; sends nothing
+magnum thesis --vault ~/vault               # one call; shows the worst-case cost and asks first
+```
+
+One model call reads your notes, your projects and the relationships from the last
+`magnum converge`, and writes `EMERGENT_THESIS.md`: a short statement of what the
+work as a whole appears to be about, and up to seven claims. Run `converge` first
+if you want the relationships included.
+
+- **Every claim cites real notes.** The model cites notes by id; the code maps
+  each id back to a note in your vault. A claim that cites nothing real is
+  dropped, and the file says how many were. If the statement itself cites
+  nothing real, nothing is written and the previous version stays.
+- **You shape the next version.** Tick **accept** or **reject** under a claim.
+  Accepted claims are kept in every later version. Rejected ones are never
+  repeated: the model is told, and the code drops any that come back anyway.
+  Untick to change your mind.
+- **What you rejected in `CONVERGENCE.md` is never sent**, even if you ticked it
+  after the last `converge`.
+- **No dates.** Dates and times are removed from everything the model sees.
+- **Your external files stay local.** Relationships found with `converge
+  --external` are not sent.
+- **Versioned.** Each run is a new version. Earlier ones are kept in
+  `.magnum/thesis/`.
+- **Cost first.** It sends up to 120 notes (`--max-notes`), evidence notes
+  first. Before sending, it shows the worst-case cost. The default rates are
+  those of a large model; pass your model's with `--input-rate` and
+  `--output-rate`. `--dry-run` writes the exact prompt to
+  `.magnum/thesis/prompt.txt`.
+
+It uses the same providers as `sort`: Claude by default, or `--llm openai
+--base-url ... --model ...` for any OpenAI-compatible server, including one on
+your own machine.
 
 ## Living in the vault from Obsidian
 

@@ -277,14 +277,14 @@ BLOCK = re.compile(r"<!--convergence:(?P<id>c-[0-9a-f]{6})-->")
 BOX = re.compile(r"^- \[(?P<mark>[ xX])\] (?P<what>accept|reject)\b", re.IGNORECASE)
 
 
-def read_ticks(path: Path) -> dict:
+def read_ticks(path: Path, block=BLOCK) -> dict:
     """{id: "accepted" | "rejected" | None | "conflict"} from CONVERGENCE.md.
     None means the block is present with neither box ticked."""
     if not path.exists():
         return {}
     ticks, current = {}, None
     for line in normalize(path.read_text(encoding="utf-8")).splitlines():
-        m = BLOCK.search(line)
+        m = block.search(line)
         if m:
             current = m.group("id")
             ticks[current] = set()
@@ -401,6 +401,17 @@ def converge(vault, backend, externals=(), top: int = DEFAULT_TOP,
     rels = relationships(docs, backend.fit(docs)) if len(docs) > 1 else []
     text = render(rels, docs, state, backend.name, top, min_score, len(ext))
     vault._atomic_write(out_path, text)
+    # What the last pass showed, so later passes (the thesis) can build on
+    # it without recomputing: the proposals on screen and what you accepted.
+    fb = state["feedback"]
+    state["latest"] = [
+        {"id": r["id"], "labels": r["labels"], "score": r["score"],
+         "shared": r["shared"],
+         "decision": fb.get(r["id"], {}).get("decision", "proposed"),
+         "evidence": [[docs[i].key, docs[j].key, round(sc, 4)]
+                      for sc, i, j in r["evidence"]]}
+        for r in (proposals(rels, state, min_score)[:top]
+                  + [r for r in rels if fb.get(r["id"], {}).get("decision") == "accepted"])]
     state["runs"] = (state.get("runs", []) + [{
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "backend": backend.name, "documents": len(docs),
