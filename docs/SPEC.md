@@ -211,12 +211,25 @@ Reference implementation of `EMERGENT_THESIS.md` (`magnum thesis`, v0.5.0):
 - Relationships the person rejected are never sent, and neither is anything
   from external corpora.
 
-## 5. Agents (informative, not yet implemented)
+## 5. Agents
 
-The planned MCP server exposes: `ingest`, `query`, `read_queue`, `write_note`,
-`read_status`. Agents interact with the vault exclusively through the note format above,
-provenance-tagged. An agent MAY maintain its own vault as an orchestration substrate;
-the format is identical.
+Agents interact with the vault only through the note format above, with their
+authorship declared. An agent MAY maintain its own vault as an orchestration
+substrate; the format is identical.
+
+Reference implementation (`magnum serve`, v0.6.0): an MCP server over stdio.
+
+- **Read tools:** `read_queue`, `list_projects`, `read_status`, `list_open_loops`,
+  `search`, `read_note`. Reading MUST NOT write anything, including the index.
+  `read_note` is confined to the vault and excludes `.magnum/` and `.obsidian/`.
+- **Writing is off by default.** With `--allow-write`, one more tool is offered:
+  `write_note`. It only ever creates a new file, under `agents/<name>/`, and never
+  replaces one. No agent tool edits, moves or deletes an existing file.
+- **Every agent note is labelled.** Its frontmatter carries
+  `author: agent:<name>`, and its first line says that it is the agent's
+  suggestion. Agent notes carry no `conversation_id`, so they are not distilled
+  notes: sort, convergence and the thesis MUST NOT use them as evidence.
+- **Agents cannot spend.** No agent tool calls a paid API.
 
 ## Versioning
 

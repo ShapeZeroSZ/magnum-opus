@@ -7,6 +7,7 @@
   magnum sort     --vault ./vault [--llm ... --model NAME]
   magnum converge --vault ./vault [--external ~/obsidian] [--backend builtin|local|openai]
   magnum thesis   --vault ./vault [--dry-run] [--llm ... --model NAME]
+  magnum serve    --vault ./vault [--allow-write]    (MCP server for AI assistants)
   magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
@@ -333,6 +334,21 @@ def cmd_thesis(args) -> int:
     return 0
 
 
+def cmd_serve(args) -> int:
+    """Let an AI assistant read the vault over MCP (stdio)."""
+    from .agents import Server
+    root = Path(args.vault)
+    if not (root / ".magnum").is_dir():
+        print(f"No Magnum Opus vault at {root}.", file=sys.stderr)
+        return 2
+    # stdout carries the protocol; anything for the person goes to stderr.
+    print(f"magnum serve: {root.resolve()} "
+          + ("(agents may add labelled notes in agents/)" if args.allow_write
+             else "(read-only)"), file=sys.stderr)
+    Server(root, allow_write=args.allow_write, agent_name=args.agent_name).serve()
+    return 0
+
+
 def cmd_reindex(args) -> int:
     """Rebuild the index from the notes on disk."""
     vault = Vault(args.vault)
@@ -471,6 +487,16 @@ def main(argv=None) -> int:
                      help="Write the exact prompt to .magnum/thesis/prompt.txt; send nothing")
     ths.add_argument("--yes", action="store_true", help="Skip the cost prompt")
     ths.set_defaults(func=cmd_thesis)
+
+    srv = sub.add_parser("serve",
+                         help="Let AI assistants read the vault (MCP server over stdio)")
+    srv.add_argument("--vault", default="./vault")
+    srv.add_argument("--allow-write", action="store_true",
+                     help="Let agents add notes of their own in agents/<name>/, labelled "
+                          "as theirs. They can never change, move or delete your notes.")
+    srv.add_argument("--agent-name", default=None,
+                     help="Name to label agent notes with (default: the client's name)")
+    srv.set_defaults(func=cmd_serve)
 
     rex = sub.add_parser("reindex",
                          help="Rebuild the index from notes on disk (after a crash)")
