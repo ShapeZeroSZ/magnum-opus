@@ -350,7 +350,14 @@ class Vault:
             + section("Ideas", note.ideas)
             + section("Open loops", note.open_loops, task=True)
             + (f"\n**Touches:** {links}\n" if links else "")
+            + f"\n**Source:** {self._source_line(note)}\n"
         )
+
+    @staticmethod
+    def _source_line(note) -> str:
+        from .sources import origin
+        return origin({"provider": note.provider, "conversation_id": note.conversation_id,
+                       "title": note.title, "updated_at": note.updated_at})
 
     # ---------------------------------------------------------- rollups ----
 
@@ -372,7 +379,8 @@ class Vault:
     def _write_status(self, project, notes):
         pdir = self.root / "projects" / project
         pdir.mkdir(parents=True, exist_ok=True)
-        loops = [(self._item_line(l), n["title"]) for n in notes
+        from .sources import where
+        loops = [(self._item_line(l), where(self, n["segment_key"])) for n in notes
                  for l in n["open_loops"] if not _done(l)]
         decisions = [(self._item_line(d), n["updated_at"][:10])
                      for n in notes for d in n["decisions"]]
@@ -381,7 +389,7 @@ class Vault:
                  f"{len(notes)} distilled segments_\n"]
         if loops:
             lines.append("## Open loops")
-            lines += [f"{l}  _(from: {t})_" for l, t in loops[:30]]
+            lines += [f"{l}  _(in {t})_" for l, t in loops[:30]]
         if decisions:
             lines.append("\n## Recent decisions")
             lines += [f"{d} _({when})_" for d, when in decisions[:20]]

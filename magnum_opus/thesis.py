@@ -345,7 +345,11 @@ def verify(data, prep: Prepared, max_claims: int) -> dict:
 
 def _link(key, docs) -> str:
     d = docs.get(key)
-    return f"[[{d.link}|{d.title}]]" if d and d.link else "(a note no longer in the vault)"
+    return conv.found_at(d) if d and d.link else "(a note no longer in the vault)"
+
+
+def _evidence(keys, docs) -> list:
+    return ["- evidence:"] + [f"  - {_link(k, docs)}" for k in keys]
 
 
 def _across(cites, docs) -> list:
@@ -360,7 +364,7 @@ def _claim_block(c, docs, decision=None) -> list:
         lines.append(f"across {', '.join(across)}")
     live = [k for k in c.get("cites", []) if k in docs]
     if live:
-        lines.append("- evidence: " + ", ".join(_link(k, docs) for k in live))
+        lines += _evidence(live, docs)
     else:
         lines.append("- evidence: its notes are no longer in the vault")
     lines.append(f"- [{'x' if decision == 'accepted' else ' '}] accept")
@@ -380,9 +384,9 @@ def render(version: dict, state: dict, docs: dict) -> str:
              "**accept** or **reject** under a claim; later versions keep what you "
              "accept and never repeat what you reject."
              + (" Earlier versions are in `.magnum/thesis/`." if n > 1 else "") + "_",
-             "", "> " + version["statement"], "",
-             "evidence: " + ", ".join(_link(k, docs) for k in version["statement_cites"]),
-             "", "## Claims", ""]
+             "", "> " + version["statement"], ""]
+    lines += _evidence(version["statement_cites"], docs)
+    lines += ["", "## Claims", ""]
     for c in version["claims"]:
         lines += _claim_block(c, docs)
     if not version["claims"]:

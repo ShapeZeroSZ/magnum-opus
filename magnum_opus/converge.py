@@ -89,6 +89,7 @@ class Doc:
     text: str
     origin: str       # "note" | "external"
     source: str = ""  # the conversation a note came from ("" for external files)
+    where: str = ""   # how to find it: "the Claude chat “…” (date) [open](url)"
 
 
 def _note_text(rec: dict) -> str:
@@ -100,6 +101,7 @@ def _note_text(rec: dict) -> str:
 
 
 def vault_documents(vault) -> list:
+    from .sources import origin
     vault.sync_from_disk()
     docs = []
     for rec in vault.state["notes"]:
@@ -116,7 +118,7 @@ def vault_documents(vault) -> list:
             group_label=project if placed else f"“{name}” (unsorted)",
             link=path[:-3] if path.endswith(".md") else path,
             text=_note_text(rec), origin="note",
-            source=rec.get("conversation_id", "")))
+            source=rec.get("conversation_id", ""), where=origin(rec)))
     return docs
 
 
@@ -332,13 +334,21 @@ def _link(doc) -> str:
     return f"`{doc.key.removeprefix('external:')}`"
 
 
+def found_at(doc) -> str:
+    """The note, and where it came from, so it can always be found."""
+    return _link(doc) + (f", from {doc.where}" if doc.where else
+                         " (your file)" if doc.origin == "external" else "")
+
+
 def _block(r, docs, decision=None) -> list:
     a, b = r["labels"]
     lines = [f"### {a} ↔ {b} <!--convergence:{r['id']}-->",
              f"strength {r['score']:.2f}"
              + (f" · shared: {', '.join(r['shared'])}" if r["shared"] else "")]
     for s, i, j in r["evidence"]:
-        lines.append(f"- evidence: {_link(docs[i])} ↔ {_link(docs[j])} ({s:.2f})")
+        lines.append(f"- evidence ({s:.2f}):")
+        lines.append(f"  - {found_at(docs[i])}")
+        lines.append(f"  - {found_at(docs[j])}")
     lines.append(f"- [{'x' if decision == 'accepted' else ' '}] accept")
     lines.append(f"- [{'x' if decision == 'rejected' else ' '}] reject")
     return lines + [""]

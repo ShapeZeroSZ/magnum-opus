@@ -31,13 +31,12 @@ the standard library.
 from __future__ import annotations
 
 import json
-import math
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, proposals as props
+from . import __version__, proposals as props, sources
 from .converge import UNPLACED, terms
 from .vault import Vault, _done, slugify
 
@@ -69,8 +68,10 @@ TOOLS = [
                                     "limit": {"type": "integer", "minimum": 1,
                                               "maximum": 200}}}},
     {"name": "search",
-     "description": "Find notes by content. Returns path, title, project and "
-                    "summary for the best matches.",
+     "description": "Find notes by content. Returns path, title, project, summary "
+                    "and the original conversation (with a link) for the best "
+                    "matches. When you mention a note to the person, include that "
+                    "link so they can find it.",
      "inputSchema": {"type": "object",
                      "properties": {"query": {"type": "string"},
                                     "limit": {"type": "integer", "minimum": 1,
@@ -213,30 +214,15 @@ class Server:
 
     def search(self, args):
         v = self._vault()
-        query = terms(str(args.get("query", "")))
-        if not query:
+        if not terms(str(args.get("query", ""))):
             raise ToolError("The query has no searchable words.")
-        limit = int(args.get("limit") or 10)
-        docs = []
-        for rec in v.state["notes"]:
-            parts = [rec.get("title", ""), rec.get("topic", ""), rec.get("summary", "")]
-            for k in ("decisions", "ideas", "open_loops"):
-                parts += [i.get("text", "") for i in rec.get(k, []) if isinstance(i, dict)]
-            docs.append((rec, set(terms(" ".join(parts)))))
-        n = len(docs)
-        df = {t: sum(1 for _, ts in docs if t in ts) for t in set(query)}
-        scored = []
-        for rec, ts in docs:
-            s = sum(math.log((1 + n) / (1 + df[t])) + 1 for t in set(query) if t in ts)
-            if s > 0:
-                scored.append((-s, rec["segment_key"], rec))
-        scored.sort(key=lambda x: (x[0], x[1]))
         lines = []
-        for _, _, rec in scored[:limit]:
+        for _, rec in sources.search_notes(v, str(args["query"]), int(args.get("limit") or 10)):
             project = rec.get("project", "")
             lines.append(f"- {self._path_of(v, rec)} | {rec.get('title', '')} | "
                          f"{project if project not in UNPLACED else 'unsorted'} | "
-                         + re.sub(r"\s+", " ", rec.get("summary", ""))[:240])
+                         + re.sub(r"\s+", " ", rec.get("summary", ""))[:240]
+                         + f" | from {sources.origin(rec)}")
         return "\n".join(lines) or "No notes match."
 
     def read_note(self, args):

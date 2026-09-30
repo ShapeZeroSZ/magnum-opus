@@ -9,6 +9,7 @@
   magnum thesis   --vault ./vault [--dry-run] [--llm ... --model NAME]
   magnum serve    --vault ./vault [--allow-write]    (MCP server for AI assistants)
   magnum proposals --vault ./vault                   (carry out what you accepted)
+  magnum find     <words> --vault ./vault [--export <folder>]   (where is it?)
   magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
@@ -372,6 +373,59 @@ def cmd_proposals(args) -> int:
     return 0
 
 
+def cmd_find(args) -> int:
+    """Where is it? Notes first, then (with --export) the raw conversations."""
+    from . import sources
+    from .converge import terms
+    query = " ".join(args.words)
+    if not terms(query):
+        print("Give some words to look for (dates and very common words are ignored).",
+              file=sys.stderr)
+        return 2
+    found = False
+    root = Path(args.vault)
+    if (root / ".magnum").is_dir():
+        vault = Vault(root)
+        vault.sync_from_disk()                     # read only: nothing is written
+        hits = sources.search_notes(vault, query, args.limit)
+        if hits:
+            found = True
+            print("In your notes:")
+            for i, (_, rec) in enumerate(hits, 1):
+                path = vault.state["segments"].get(rec["segment_key"], {}).get("path", "")
+                url = sources.chat_url(rec.get("provider", ""), rec.get("conversation_id", ""))
+                name = sources.PROVIDER_NAMES.get(rec.get("provider", ""), rec.get("provider", ""))
+                print(f"  {i}. {rec.get('title', '')}  [{rec.get('project', '')}]")
+                print(f"     note:  {path}")
+                print(f"     from:  {name} chat, {rec.get('updated_at', '')[:10]}"
+                      + (f"  {url}" if url else ""))
+                if rec.get("summary"):
+                    print(f"     {rec['summary'][:160]}")
+    if args.export:
+        p = Path(args.export)
+        convs = (archive.load_conversations(p, provider=args.provider) if p.is_dir()
+                 else load_export(p, provider=args.provider))
+        hits = sources.search_conversations(convs, query, args.limit)
+        if hits:
+            print(("\n" if found else "") + "In your export (searched on this computer; "
+                  "includes what distillation left out):")
+            for i, (_, c, snippet) in enumerate(hits, 1):
+                url = sources.chat_url(c.provider, c.id)
+                name = sources.PROVIDER_NAMES.get(c.provider, c.provider)
+                print(f"  {i}. {name} chat “{c.title}”, {(c.updated_at or c.created_at)[:10]}"
+                      + (f"  {url}" if url else ""))
+                if snippet:
+                    print(f"     {snippet}")
+            found = True
+    if not found:
+        print(f"Nothing matches “{query}”.")
+        if not args.export:
+            print("Also search your full export, including what distillation left out:\n"
+                  f"  magnum find {query} --export <your export folder>")
+        return 1
+    return 0
+
+
 def cmd_reindex(args) -> int:
     """Rebuild the index from the notes on disk."""
     vault = Vault(args.vault)
@@ -526,6 +580,16 @@ def main(argv=None) -> int:
                          help="Close the open loops whose proposals you accepted")
     prp.add_argument("--vault", default="./vault")
     prp.set_defaults(func=cmd_proposals)
+
+    fnd = sub.add_parser("find", help="Where is it? Search your notes, and optionally "
+                                      "your raw export, and show where each match came from")
+    fnd.add_argument("words", nargs="+")
+    fnd.add_argument("--vault", default="./vault")
+    fnd.add_argument("--export", default=None,
+                     help="Also search this export folder (or conversations.json) directly")
+    fnd.add_argument("--provider", default="auto", choices=["auto", "claude", "chatgpt"])
+    fnd.add_argument("--limit", type=int, default=10)
+    fnd.set_defaults(func=cmd_find)
 
     rex = sub.add_parser("reindex",
                          help="Rebuild the index from notes on disk (after a crash)")
