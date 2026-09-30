@@ -40,7 +40,7 @@ def test_initialize_and_list_tools(tmp_path):
     assert _init(s, version="1999-01-01")["result"]["protocolVersion"] == "2025-06-18"
     names = {t["name"] for t in _call(s, "tools/list")["result"]["tools"]}
     assert names == {"read_queue", "list_projects", "read_status", "list_open_loops",
-                     "search", "read_note"}                    # no write_note by default
+                     "search", "read_note", "read_guidance"}   # no write_note by default
 
 
 def test_protocol_edges(tmp_path):

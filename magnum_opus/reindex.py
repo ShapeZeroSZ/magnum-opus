@@ -23,7 +23,8 @@ ITEM = re.compile(
 TASK = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 LINKS = re.compile(r"\[\[([^\]|#]+)")
 GENERATED = {"QUEUE.md", "PRIORITIES.md", "STATUS.md", "MANIFESTO.md",
-             "CONVERGENCE.md", "EMERGENT_THESIS.md", "PROPOSALS.md"}
+             "CONVERGENCE.md", "EMERGENT_THESIS.md", "PROPOSALS.md",
+             "BRIEF.md"}
 LOC = re.compile(r"^(?P<conv>[^#]*)#(?P<msg>\S*)\s*(?P<role>user|assistant)?"
                  r"\s*(?P<mark>ambiguous|unverified)?\s*$")
 

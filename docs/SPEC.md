@@ -121,6 +121,8 @@ vault/
   QUEUE.md                    # generated: the default view (≤ 3 items)
   PRIORITIES.md               # generated: the complete ordered priority list
   MANIFESTO.md                # optional copy of the principles
+  GUIDANCE.md                 # the person's standing instructions (theirs, never generated)
+  BRIEF.md                    # generated: the state of the work, to hand to any assistant
   config.json                 # projects list + settings (all optional)
   unsorted/*.md               # notes not yet placed by a sort
   projects/<slug>/
