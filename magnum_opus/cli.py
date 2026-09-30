@@ -5,6 +5,7 @@
   magnum ingest   --export <folder> --vault ./vault [--dry-run] [--limit N]
                   [--llm anthropic|openai --base-url URL --model NAME]
   magnum sort     --vault ./vault [--llm ... --model NAME]
+  magnum converge --vault ./vault [--external ~/obsidian] [--backend builtin|local|openai]
   magnum reindex  --vault ./vault
   magnum status   --vault ./vault
 """
@@ -229,6 +230,49 @@ def cmd_sort(args) -> int:
     return 0
 
 
+def cmd_converge(args) -> int:
+    """Propose how the body of work relates across projects (CONVERGENCE.md)."""
+    from . import converge as conv
+    vault = Vault(args.vault)
+    try:
+        if args.backend == "builtin":
+            backend = conv.TfidfBackend()
+        elif args.backend == "local":
+            backend = conv.local_backend(args.model)
+        else:
+            if not args.model:
+                print("--model is required with --backend openai.", file=sys.stderr)
+                return 2
+            backend = conv.openai_backend(args.model, args.base_url)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        return 2
+    if args.backend == "openai" and not args.yes:
+        # Nothing leaves the machine before the person has seen what and where.
+        docs = conv.vault_documents(vault)
+        for root in args.external:
+            docs += conv.external_documents(root, vault.root)
+        chars = sum(len(d.text) for d in docs)
+        print(f"About to send {len(docs)} texts (~{chars // 4:,} tokens) to "
+              f"{args.base_url or os.environ.get('MAGNUM_BASE_URL', '(MAGNUM_BASE_URL)')} "
+              f"for embeddings with model {args.model}.")
+        if input("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("Aborted. Nothing sent.")
+            return 1
+    try:
+        result = conv.converge(vault, backend, externals=args.external, top=args.top,
+                               min_score=args.min_score)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        return 1
+    for change in result["feedback_changes"]:
+        print(f"  recorded: {change}")
+    print(f"Compared {result['documents']} documents: "
+          f"{len(result['proposed'])} proposals shown.")
+    print(f"Open {args.vault}/CONVERGENCE.md")
+    return 0
+
+
 def cmd_reindex(args) -> int:
     """Rebuild the index from the notes on disk."""
     vault = Vault(args.vault)
@@ -322,6 +366,29 @@ def main(argv=None) -> int:
                      help="Model for assigning notes to projects (mechanical). "
                           f"anthropic default: {ASSIGN_MODEL}; otherwise --model")
     srt.set_defaults(func=cmd_sort)
+
+    cv = sub.add_parser("converge",
+                        help="Propose how your projects relate (writes CONVERGENCE.md)")
+    cv.add_argument("--vault", default="./vault")
+    cv.add_argument("--backend", default="builtin", choices=["builtin", "local", "openai"],
+                    help="builtin: no dependencies, explains itself (default); "
+                         "local: sentence-transformers on this machine; "
+                         "openai: an OpenAI-compatible /embeddings server")
+    cv.add_argument("--model", default=None,
+                    help="Embedding model (local default: all-MiniLM-L6-v2; "
+                         "required for openai)")
+    cv.add_argument("--base-url", default=None,
+                    help="Server URL for --backend openai (or MAGNUM_BASE_URL)")
+    cv.add_argument("--external", action="append", default=[],
+                    help="Also read this folder of markdown (e.g. an existing Obsidian "
+                         "vault), read-only. Repeatable.")
+    cv.add_argument("--top", type=int, default=5,
+                    help="How many proposals to show (default 5)")
+    cv.add_argument("--min-score", type=float, default=None,
+                    help="Similarity floor for proposals (heuristic, not a probability)")
+    cv.add_argument("--yes", action="store_true",
+                    help="Skip the confirmation before sending text to a server")
+    cv.set_defaults(func=cmd_converge)
 
     rex = sub.add_parser("reindex",
                          help="Rebuild the index from notes on disk (after a crash)")

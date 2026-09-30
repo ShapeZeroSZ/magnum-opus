@@ -64,22 +64,42 @@ class OpenAICompatibleClient:
         self.timeout = timeout
         self.messages = _Messages(self)
 
-    def _chat(self, model: str, max_tokens: int, messages: list) -> Response:
-        body = json.dumps({"model": model, "max_tokens": max_tokens,
-                           "messages": messages}).encode("utf-8")
+    def _post(self, path: str, payload: dict) -> dict:
+        body = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            f"{self.base_url}/chat/completions", data=body, method="POST",
+            f"{self.base_url}{path}", data=body, method="POST",
             headers={"Content-Type": "application/json",
                      **({"Authorization": f"Bearer {self.api_key}"}
                         if self.api_key else {})})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                data = json.loads(r.read().decode("utf-8"))
+                return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:300]
             raise RuntimeError(f"{self.base_url} returned HTTP {e.code}: {detail}") from e
         except urllib.error.URLError as e:
             raise RuntimeError(f"Could not reach {self.base_url}: {e.reason}") from e
+
+    def embed(self, model: str, texts: list, batch: int = 64) -> list:
+        """Vectors for texts via POST {base_url}/embeddings, in input order."""
+        out = []
+        for start in range(0, len(texts), batch):
+            chunk = texts[start:start + batch]
+            data = self._post("/embeddings", {"model": model, "input": chunk})
+            try:
+                rows = sorted(data["data"], key=lambda r: r.get("index", 0))
+                vecs = [list(map(float, r["embedding"])) for r in rows]
+            except (KeyError, TypeError, ValueError) as e:
+                raise RuntimeError(f"Unexpected embeddings response from {self.base_url}") from e
+            if len(vecs) != len(chunk):
+                raise RuntimeError(f"{self.base_url} returned {len(vecs)} embeddings "
+                                   f"for {len(chunk)} texts")
+            out += vecs
+        return out
+
+    def _chat(self, model: str, max_tokens: int, messages: list) -> Response:
+        data = self._post("/chat/completions", {"model": model, "max_tokens": max_tokens,
+                                                 "messages": messages})
         try:
             choice = data["choices"][0]
             text = choice["message"].get("content") or ""

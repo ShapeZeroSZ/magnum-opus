@@ -30,10 +30,12 @@ your behalf, with every action they take recorded as theirs, never as yours.
    them and maintains a rolling `STATUS.md` per project.
 3. **Queue** — `QUEUE.md` shows at most **three** items, ranked by what's closest to done.
    Everything else is intentionally hidden. This is the anti-overwhelm view.
-4. **Converge** *(phase 3, in progress)* — embeddings + clustering across the whole corpus
-   surface the latent relationships between your projects, and a synthesis pass writes a
-   versioned `EMERGENT_THESIS.md`: what this body of work appears to be about, with cited
-   evidence. The thesis is an *output* of the system, not an input.
+4. **Converge** — `magnum converge` proposes how your projects relate, on content alone,
+   in `CONVERGENCE.md`: a handful of cross-project connections, each with the notes and
+   words it rests on. You accept or reject them; your answers shape every later pass.
+   *(Next: a synthesis pass writing a versioned `EMERGENT_THESIS.md`: what this body of
+   work appears to be about, with cited evidence. The thesis is an output of the system,
+   not an input.)*
 
 ## Install
 
@@ -80,6 +82,7 @@ magnum inspect  --export ~/Downloads/claude-export      # what's there, no spend
 magnum estimate --export ~/Downloads/claude-export      # tokens and cost
 magnum ingest   --export ~/Downloads/claude-export --vault ~/vault
 magnum sort     --vault ~/vault                         # derive project structure
+magnum converge --vault ~/vault                         # how your projects relate
 magnum reindex  --vault ~/vault                         # rebuild index after a crash
 magnum status   --vault ~/vault                         # prints the queue
 ```
@@ -118,11 +121,13 @@ Done:
 - [x] Test suite and CI (v0.3.5)
 - [x] Safe to live in from Obsidian: hand edits, properties, renames, deletions and
       your own project choices all survive (v0.3.6)
+- [x] Convergence, first pass: cross-project relationships on content alone, with
+      evidence, your accept/reject feedback, and optional external vaults (v0.4.0)
 
 Next, roughly in order:
-- [ ] **Convergence engine.** Local embeddings and clustering across all notes, and
-      optionally an existing Obsidian vault, writing `CONVERGENCE.md` and a versioned
-      `EMERGENT_THESIS.md`. Relationships on content alone; time is provenance.
+- [ ] **Emergent thesis.** A synthesis pass over the accepted and proposed
+      relationships writing a versioned `EMERGENT_THESIS.md`, every claim citing notes
+      that exist (checked in code). Paid model calls, so estimate first.
 - [ ] **Agent layer.** An MCP server (`ingest`, `query`, `read_queue`, `write_note`,
       `read_status`) so assistants can read the vault and write provenance-tagged
       notes, and later act on open loops for the user, every action recorded as
@@ -136,6 +141,45 @@ Open to anyone, any time (no milestone gates these):
       an existing Obsidian vault. Write a parser that produces conversations with stable
       message ids and it plugs in.
 - [ ] **More organization schemes** over the same note format (see SPEC §3).
+
+## Converge: how your work relates
+
+```bash
+magnum converge --vault ~/vault                           # built in, no dependencies
+magnum converge --vault ~/vault --external ~/Documents/MyObsidianVault
+magnum converge --vault ~/vault --backend local           # pip install "magnum-opus[converge]"
+magnum converge --vault ~/vault --backend openai --base-url http://localhost:11434/v1 \
+    --model nomic-embed-text                                # any /v1/embeddings server
+```
+
+`CONVERGENCE.md` lists a few connections that cross between your projects, strongest
+first. Each one shows the notes it rests on (as links) and, with the built-in backend,
+the words the notes share. Under each connection, tick **accept** or **reject** in
+Obsidian. The next run records your answer in `.magnum/convergence.json`:
+
+- **rejected** connections are never proposed again;
+- **accepted** ones stay pinned under "Accepted by you";
+- **untick** either to change your mind.
+
+The rules it keeps:
+
+- **Content only.** Dates, times, weekday and month names and bare numbers are
+  stripped before comparing. Two pieces of the same conversation are never paired:
+  where something came from is provenance, not evidence.
+- **A lens, not a blender.** Only relationships *between* projects are proposed,
+  and no note is moved, merged or edited. `CONVERGENCE.md` and
+  `.magnum/convergence.json` are the only files written; delete them and the vault
+  works exactly as before.
+- **Small by default.** Five proposals; `--top N` for more.
+- **Your other notes, read-only.** `--external` reads another folder of markdown
+  (e.g. an existing Obsidian vault) without writing to it. `.obsidian/` and
+  `.trash/` are skipped.
+- **Nothing sent without asking.** The `openai` backend shows what it will send, and
+  where, before sending anything (`--yes` to skip).
+
+Before `magnum sort`, notes are compared individually. After sorting, relationships
+are between projects. Scores are similarity heuristics, not probabilities. The
+built-in backend compares every pair of notes: about 10 seconds for 1,500 notes.
 
 ## Living in the vault from Obsidian
 
