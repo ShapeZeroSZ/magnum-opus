@@ -45,10 +45,21 @@ class Item:
     date: str              # when the source conversation was last updated
     source: str            # "the Claude chat “…” (date) [open](url)"
     url: str
+    speaker: str = ""      # "user" | "assistant": whose message the item is from; "" unknown
     score: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def speaker_of(it: dict) -> str:
+    """Whose message an item came from, by its locator: "user" or "assistant".
+    Only a verified locator (its anchor matched exactly one message) says so;
+    anything less is "" (unknown), never a guess. A decision from an assistant
+    turn is that assistant's suggestion, not the user's decision."""
+    loc = it.get("locator") or {}
+    role = loc.get("role", "")
+    return role if loc.get("verified") and role in ("user", "assistant") else ""
 
 
 def item_id(segment_key: str, kind: str, text: str) -> str:
@@ -74,7 +85,8 @@ def items(vault) -> list:
                 if not isinstance(it, dict) or not it.get("text"):
                     continue
                 k = "done_loop" if kind == "open_loop" and _done(it) else kind
-                out.append(Item(item_id(key, kind, it["text"]), k, it["text"], **base))
+                out.append(Item(item_id(key, kind, it["text"]), k, it["text"], **base,
+                                speaker=speaker_of(it)))
     return out
 
 
