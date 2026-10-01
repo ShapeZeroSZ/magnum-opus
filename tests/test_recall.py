@@ -113,5 +113,19 @@ def test_items_say_who_said_them_only_when_verified(tmp_path):
     assert by["Try drip irrigation."].speaker == ""          # ambiguous: not a guess
     assert by["Add a compost bin."].speaker == ""            # unlocated
     assert by["Garden planning."].speaker == ""              # the distiller's summary
+    from magnum_opus.proposals import open_loops
+    v2 = Vault(tmp_path / "v2")
+    v2.write_note(Note(conversation_id="c2", segment_key="c2:s:e", title="Orbit",
+                       provider="shapezero", updated_at="2026-09-29T00:00:00Z",
+                       open_loops=[Item("Name the rings feature.", "name",
+                                        Locator("c2", "m1-user", "user", verified=True)),
+                                   Item("Draft a privacy policy.", "policy",
+                                        Locator("c2", "m2-assistant", "assistant",
+                                                verified=True))]))
+    v2.rebuild_rollups()
+    v2.save()
+    v2.sync_from_disk()
+    assert {l["text"]: l["speaker"] for l in open_loops(v2)} == {
+        "Name the rings feature.": "user", "Draft a privacy policy.": "assistant"}
     out = Server(tmp_path / "v").recall({"query": "marigolds pests"})
     assert "said by the assistant] Plant marigolds" in out
