@@ -46,6 +46,8 @@ class Item:
     source: str            # "the Claude chat “…” (date) [open](url)"
     url: str
     speaker: str = ""      # "user" | "assistant": whose message the item is from; "" unknown
+    conversation: str = ""  # the source conversation's id
+    message: str = ""      # the source message's id, from the locator; "" if unlocated
     score: float = 0.0
 
     def to_dict(self) -> dict:
@@ -74,7 +76,7 @@ def items(vault) -> list:
         base = dict(project=slugify(rec.get("project", "")),
                     note=vault.state["segments"].get(key, {}).get("path") or "",
                     title=rec.get("title", ""), date=(rec.get("updated_at") or "")[:10],
-                    source=sources.origin(rec),
+                    source=sources.origin(rec), conversation=rec.get("conversation_id", ""),
                     url=sources.chat_url(rec.get("provider", ""), rec.get("conversation_id", "")))
         if rec.get("summary"):
             out.append(Item(item_id(key, "summary", rec["summary"]), "summary",
@@ -86,7 +88,8 @@ def items(vault) -> list:
                     continue
                 k = "done_loop" if kind == "open_loop" and _done(it) else kind
                 out.append(Item(item_id(key, kind, it["text"]), k, it["text"], **base,
-                                speaker=speaker_of(it)))
+                                speaker=speaker_of(it),
+                                message=(it.get("locator") or {}).get("message_id", "")))
     return out
 
 

@@ -1,2 +1,2 @@
 """Magnum Opus — distill AI chats into a completion-focused, convergence-aware vault."""
-__version__ = "0.10.1"
+__version__ = "0.10.2"
