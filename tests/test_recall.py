@@ -113,6 +113,9 @@ def test_items_say_who_said_them_only_when_verified(tmp_path):
     assert by["Try drip irrigation."].speaker == ""          # ambiguous: not a guess
     assert by["Add a compost bin."].speaker == ""            # unlocated
     assert by["Garden planning."].speaker == ""              # the distiller's summary
+    fence = by["Beds go along the south fence."]
+    assert (fence.conversation, fence.message) == ("c1", "m1-user")   # openable at its source
+    assert by["Add a compost bin."].message == ""
     from magnum_opus.proposals import open_loops
     v2 = Vault(tmp_path / "v2")
     v2.write_note(Note(conversation_id="c2", segment_key="c2:s:e", title="Orbit",

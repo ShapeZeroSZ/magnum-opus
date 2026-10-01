@@ -144,7 +144,8 @@ Done:
       work to any other assistant (v0.9.0)
 - [x] Memory for agents: `recall` returns small cited items with no model calls,
       and Shape Zero chat logs are a source (v0.10.0); each item says who said it,
-      so an assistant's suggestion is never recalled as your decision (v0.10.1)
+      so an assistant's suggestion is never recalled as your decision (v0.10.1),
+      and names its source conversation and message so it can be opened (v0.10.2)
 
 Next, roughly in order:
 - [ ] **Zero-config.** `magnum` with no arguments does the right thing.
