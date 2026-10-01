@@ -45,7 +45,9 @@ def loop_id(segment_key: str, text: str) -> str:
 
 
 def open_loops(vault) -> list:
-    """Every open loop, with a stable id. The vault must be synced."""
+    """Every open loop, with a stable id and who raised it (recall.speaker_of).
+    The vault must be synced."""
+    from .recall import speaker_of
     out = []
     for rec in vault.state["notes"]:
         key = rec["segment_key"]
@@ -55,7 +57,8 @@ def open_loops(vault) -> list:
                             "text": loop["text"],
                             "project": slugify(rec.get("project", "")),
                             "title": rec.get("title", ""),
-                            "path": vault.state["segments"].get(key, {}).get("path") or ""})
+                            "path": vault.state["segments"].get(key, {}).get("path") or "",
+                            "speaker": speaker_of(loop)})
     return out
 
 

@@ -1,6 +1,6 @@
 """Recall: small cited items, no model calls, time shown but never scored."""
 from magnum_opus.agents import Server
-from magnum_opus.distill import Item, Note
+from magnum_opus.distill import Item, Locator, Note
 from magnum_opus.recall import check_citations, item_id, items, recall
 from magnum_opus.vault import Vault
 
@@ -87,3 +87,45 @@ def test_connected_assistants_can_recall_with_ids(tmp_path):
     first = text.splitlines()[0]
     assert first.startswith("- m-") and "[open_loop, router] rerun the load balancing ablation" in first
     assert "[open](https://claude.ai/chat/a1)" in first
+
+
+def test_items_say_who_said_them_only_when_verified(tmp_path):
+    """A decision lifted from an assistant turn is a suggestion: recall carries
+    the verified speaker so it can never be passed off as the person's."""
+    v = Vault(tmp_path / "v")
+    v.write_note(Note(conversation_id="c1", segment_key="c1:s:e", title="Garden",
+                      provider="shapezero", updated_at="2026-09-29T00:00:00Z",
+                      project="garden", topic="garden", summary="Garden planning.",
+                      decisions=[Item("Beds go along the south fence.", "south fence",
+                                      Locator("c1", "m1-user", "user", verified=True))],
+                      ideas=[Item("Plant marigolds to keep pests away.", "marigolds",
+                                  Locator("c1", "m2-assistant", "assistant", verified=True)),
+                             Item("Try drip irrigation.", "drip",
+                                  Locator("c1", "m3-user", "user", verified=False,
+                                          ambiguous=True)),
+                             Item("Add a compost bin.", "", None)]))
+    v.rebuild_rollups()
+    v.save()
+    v.sync_from_disk()
+    by = {i.text: i for i in items(v)}
+    assert by["Beds go along the south fence."].speaker == "user"
+    assert by["Plant marigolds to keep pests away."].speaker == "assistant"
+    assert by["Try drip irrigation."].speaker == ""          # ambiguous: not a guess
+    assert by["Add a compost bin."].speaker == ""            # unlocated
+    assert by["Garden planning."].speaker == ""              # the distiller's summary
+    from magnum_opus.proposals import open_loops
+    v2 = Vault(tmp_path / "v2")
+    v2.write_note(Note(conversation_id="c2", segment_key="c2:s:e", title="Orbit",
+                       provider="shapezero", updated_at="2026-09-29T00:00:00Z",
+                       open_loops=[Item("Name the rings feature.", "name",
+                                        Locator("c2", "m1-user", "user", verified=True)),
+                                   Item("Draft a privacy policy.", "policy",
+                                        Locator("c2", "m2-assistant", "assistant",
+                                                verified=True))]))
+    v2.rebuild_rollups()
+    v2.save()
+    v2.sync_from_disk()
+    assert {l["text"]: l["speaker"] for l in open_loops(v2)} == {
+        "Name the rings feature.": "user", "Draft a privacy policy.": "assistant"}
+    out = Server(tmp_path / "v").recall({"query": "marigolds pests"})
+    assert "said by the assistant] Plant marigolds" in out

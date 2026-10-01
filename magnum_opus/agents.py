@@ -81,7 +81,9 @@ TOOLS = [
      "description": "Memory: the decisions, ideas, open loops and summaries most "
                     "relevant to a question, each small, with an id (m-...), its "
                     "date and the link to its original conversation. Cite items by "
-                    "id. Prefer this to search when answering from the person's history.",
+                    "id. Each says who said it when that is known: an item said by the "
+                    "assistant is its suggestion, not the person's decision. Prefer this "
+                    "to search when answering from the person's history.",
      "inputSchema": {"type": "object",
                      "properties": {"query": {"type": "string"},
                                     "project": {"type": "string"},
@@ -247,7 +249,8 @@ class Server:
             raise ToolError("The query has no searchable words.")
         hits = recall(v, str(args["query"]), int(args.get("limit") or 8),
                       project=args.get("project") or None)
-        return "\n".join(f"- {h.id} [{h.kind}, {h.project}] {h.text} "
+        said = {"user": ", said by the person", "assistant": ", said by the assistant"}
+        return "\n".join(f"- {h.id} [{h.kind}, {h.project}{said.get(h.speaker, '')}] {h.text} "
                          f"(from {h.source}; note {h.note})" for h in hits) \
             or "Nothing in memory matches."
 
